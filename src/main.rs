@@ -1,38 +1,25 @@
 //! src/main.rs
-//!   • default  : mmap + two-thread replay of a .dbn.zst **file** *or* all files
-//!                in a directory
-//!   • --verify : download GOOG/GOOGL sample and print the first 7 documented lines
+//! • default: process market data files from a directory or single file
+//! • --verify: download GOOG/GOOGL sample and verify processing
 
+mod verify;
+
+use algotrading::{
+    core::{MarketDataSource, MarketUpdate},
+    market_data::FileReader,
+    order_book::Book,
+};
 use std::{
     collections::HashMap,
     env,
     ffi::OsStr,
     fs,
-    path::{Path, PathBuf},
-    thread,
-    time::{Instant, Duration},
     io::{self, Write},
+    path::{Path, PathBuf},
+    time::{Duration as StdDuration, Instant},
 };
-
-use crossbeam_channel::{bounded, Receiver};
-use databento::{
-    dbn::{
-        decode::{AsyncDbnDecoder, DbnDecoder, DecodeRecord},
-        pretty::Px,
-        record::MboMsg,
-        Dataset, Schema, SymbolIndex
-    },
-    historical::timeseries::GetRangeToFileParams,
-    HistoricalClient
-};
-use memmap2::Mmap;
-use time::macros::datetime;
-
-mod lob;
-use lob::{Book, Market};
 
 type InstId = u32;
-const BATCH: usize = 4 * 1024;
 
 /* ------------------------------------------------------------------ */
 /*  Mode flags                                                         */
@@ -78,61 +65,50 @@ fn parse_args() -> Mode {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Producer thread                                                    */
+/*  Main processing                                                    */
 /* ------------------------------------------------------------------ */
 
-fn spawn_producer(paths: Vec<PathBuf>, tx: crossbeam_channel::Sender<Option<Vec<MboMsg>>>) {
-    thread::spawn(move || {
-        let mut batch = Vec::with_capacity(BATCH);
-
-        for path in paths {
-            let f = std::fs::File::open(&path).expect("open");
-            let mmap = unsafe { Mmap::map(&f).expect("mmap") };
-            let reader = std::io::BufReader::new(std::io::Cursor::new(&mmap[..]));
-            let mut dec = DbnDecoder::with_zstd_buffer(reader).expect("decoder");
-
-            while let Some(rec) = dec.decode_record::<MboMsg>().expect("decode") {
-                batch.push(rec.clone());
-                if batch.len() == BATCH {
-                    tx.send(Some(batch)).unwrap();
-                    batch = Vec::with_capacity(BATCH);
-                }
-            }
-        }
-
-        if !batch.is_empty() {
-            tx.send(Some(batch)).ok();
-        }
-        tx.send(None).ok();
-    });
+fn process_market_data(paths: Vec<PathBuf>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    process_market_data_with_callback(paths, |_, _, _| {})
 }
 
-/* ------------------------------------------------------------------ */
-/*  Consumer                                                           */
-/* ------------------------------------------------------------------ */
-
-fn consume(rx: Receiver<Option<Vec<MboMsg>>>) -> (u64, HashMap<InstId, Book>) {
+fn process_market_data_with_callback<F>(
+    paths: Vec<PathBuf>, 
+    mut callback: F,
+) -> std::result::Result<(), Box<dyn std::error::Error>> 
+where
+    F: FnMut(&MarketUpdate, &mut HashMap<InstId, Book>, u64),
+{
+    let start = Instant::now();
+    let mut reader = FileReader::new(paths)?;
     let mut books = HashMap::<InstId, Book>::new();
     let mut n = 0u64;
     let mut next_print = Instant::now();
     let mut spinner_anim_idx = 0;
-    
-    while let Ok(opt) = rx.recv() {
-        let chunk = match opt { Some(c) => c, None => break };
-        n += chunk.len() as u64;
-        for msg in chunk {
-            books.entry(msg.hd.instrument_id).or_default().apply(msg);
+
+    static SPINNER: &[char] = &['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
+
+    while let Some(update) = reader.next_update() {
+        n += 1;
+
+        match &update {
+            MarketUpdate::OrderBook(book_update) => {
+                // For now, just count - we'd apply to books here
+                books.entry(book_update.instrument_id).or_default();
+            }
+            MarketUpdate::Trade(_trade) => {
+                // Handle trades
+            }
         }
 
-        static SPINNER: &[char] = &[
-            '⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷',
-        ];
-        if next_print.elapsed() >= Duration::from_millis(120) { // Or Duration::from_millis(288) for ~2.3s/rev
+        // Call the callback with the update
+        callback(&update, &mut books, n);
+
+        if next_print.elapsed() >= StdDuration::from_millis(120) {
             next_print = Instant::now();
-            
             let frame = SPINNER[spinner_anim_idx % SPINNER.len()];
-            spinner_anim_idx += 1; // Always advance animation frame
-    
+            spinner_anim_idx += 1;
+
             print!(
                 "\r\x1B[33m{frame} {n:>13} msgs\x1B[0m \
                 \x1B[32m| {:>4} instruments\x1B[0m",
@@ -141,104 +117,42 @@ fn consume(rx: Receiver<Option<Vec<MboMsg>>>) -> (u64, HashMap<InstId, Book>) {
             io::stdout().flush().ok();
         }
     }
-    println!();          // finish the spinner line
-    (n, books)
-}
 
+    println!(); // finish the spinner line
 
-/* ------------------------------------------------------------------ */
-/*  Verify helper (unchanged)                                          */
-/* ------------------------------------------------------------------ */
+    let elapsed = start.elapsed();
+    let nanos_per_msg = elapsed.as_nanos() / n as u128;
+    let msgs_per_sec = 1_000_000_000.0 / nanos_per_msg as f64;
 
-async fn ensure_sample(path: &str) -> databento::Result<()> {
-    if Path::new(path).exists() {
-        return Ok(());
-    }
-    let mut client = HistoricalClient::builder().key_from_env()?.build()?;
-    client
-        .timeseries()
-        .get_range_to_file(
-            &GetRangeToFileParams::builder()
-                .dataset(Dataset::DbeqBasic)
-                .symbols(vec!["GOOG", "GOOGL"])
-                .date_time_range((
-                    datetime!(2024-04-03 08:00:00 UTC),
-                    datetime!(2024-04-03 14:00:00 UTC),
-                ))
-                .schema(Schema::Mbo)
-                .path(path)
-                .build(),
-        )
-        .await?;
+    println!(
+        "decoded {} msgs in {:.3}s → {:.1} ns/msg → {:.1} msgs/s",
+        n,
+        elapsed.as_secs_f64(),
+        nanos_per_msg,
+        msgs_per_sec
+    );
+
     Ok(())
 }
 
 /* ------------------------------------------------------------------ */
+/*  Verify mode                                                        */
+/* ------------------------------------------------------------------ */
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn verify_mode() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    verify::run_verify_mode().await
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main entry point                                                   */
+/* ------------------------------------------------------------------ */
+
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     match parse_args() {
-        /* ----------   VERIFY PATH  --------------------------------- */
+        Mode::Speed(paths) => process_market_data(paths),
         Mode::Verify => {
-            let file = "dbeq-basic-20240403.mbo.dbn.zst";
-            ensure_sample(file).await?;
-
-            let mut dec = AsyncDbnDecoder::from_zstd_file(file).await?;
-            let symbol_map = dec.metadata().symbol_map()?;
-
-            let mut market = Market::default();
-            let mut seen = 0usize;
-
-            while let Some(mbo) = dec.decode_record::<MboMsg>().await? {
-                market.apply(mbo.clone());
-                if mbo.flags.is_last() {
-                    seen += 1;
-                    let symbol = symbol_map.get_for_rec(mbo).unwrap();
-                    let (bb, ba) = market.aggregated_bbo(mbo.hd.instrument_id);
-                    println!("{symbol} Aggregated BBO | {}", mbo.ts_recv().unwrap());
-                    println!("    {}", ba.map_or("None".into(), |pl| pl.to_string()));
-                    println!("    {}", bb.map_or("None".into(), |pl| pl.to_string()));
-                }
-                if seen >= 7 {
-                    break;
-                }
-            }
-        }
-
-        /* ----------  SPEED PATH  ----------------------------------- */
-        Mode::Speed(paths) => {
-            let (tx, rx) = bounded::<Option<Vec<MboMsg>>>(8);
-            spawn_producer(paths, tx);
-
-            let t0 = Instant::now();
-            let (msgs, books) = consume(rx);
-            let dt = t0.elapsed();
-
-            for (inst, b) in &books {
-                if b.bids.is_empty() && b.asks.is_empty() {
-                    continue;
-                }
-                let bid = b
-                    .bids
-                    .iter()
-                    .rev()
-                    .next()
-                    .map(|(px, lvl)| (Px(*px), lvl.iter().map(|m| m.size).sum::<u32>()));
-                let ask = b
-                    .asks
-                    .iter()
-                    .next()
-                    .map(|(px, lvl)| (Px(*px), lvl.iter().map(|m| m.size).sum::<u32>()));
-                println!("{inst} | bid {bid:?}  ask {ask:?}");
-            }
-
-            println!(
-                "decoded {msgs} msgs in {:.3?} → {:.1} ns/msg → {:.1} msgs/s",
-                dt,
-                dt.as_nanos() as f64 / msgs as f64,
-                msgs as f64 / dt.as_secs_f64()
-            );
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(verify_mode())
         }
     }
-    Ok(())
 }

@@ -1,0 +1,13 @@
+[package]
+name = "algotrading"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crossbeam-channel = "0.5.15"
+databento = "0.26.1"
+hashbrown = "0.15.3"
+memmap2 = "0.9.5"
+smallvec = "1.15.0"
+time = "0.3.41"
+tokio = {"version" = "1.45.1", "features"= ["rt-multi-thread"]}
