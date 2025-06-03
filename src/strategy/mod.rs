@@ -3,13 +3,13 @@
 //! This module defines the core traits and types for implementing trading strategies
 //! in a backtesting environment.
 
-pub mod traits;
 pub mod context;
 pub mod output;
+pub mod traits;
 
+pub use context::{MarketStateView, StrategyContext};
+pub use output::{OrderRequest, OrderUpdate, StrategyMetrics, StrategyOutput};
 pub use traits::{Strategy, StrategyConfig};
-pub use context::{StrategyContext, MarketStateView};
-pub use output::{StrategyOutput, OrderRequest, OrderUpdate, StrategyMetrics};
 
 use std::fmt;
 

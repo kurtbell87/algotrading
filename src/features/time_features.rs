@@ -46,8 +46,8 @@ impl Default for SessionConfig {
         // Default CME futures hours (in UTC)
         // RTH: 14:30-21:00 UTC (9:30 AM - 4:00 PM ET)
         Self {
-            rth_start_hour: 14,  // 9:30 AM ET
-            rth_end_hour: 21,    // 4:00 PM ET
+            rth_start_hour: 14,   // 9:30 AM ET
+            rth_end_hour: 21,     // 4:00 PM ET
             pre_market_start: 12, // 7:00 AM ET
             after_hours_end: 22,  // 5:00 PM ET
             trading_days: vec![
@@ -121,14 +121,20 @@ impl TimeFeatures {
     }
 
     /// Update volume profile with trade
-    pub fn update_volume(&mut self, instrument_id: InstrumentId, quantity: Quantity, timestamp: u64) {
+    pub fn update_volume(
+        &mut self,
+        instrument_id: InstrumentId,
+        quantity: Quantity,
+        timestamp: u64,
+    ) {
         let dt = DateTime::from_timestamp_micros(timestamp as i64).unwrap();
         let hour = dt.hour() as usize;
-        
-        let profile = self.volume_profiles
+
+        let profile = self
+            .volume_profiles
             .entry(instrument_id)
             .or_insert_with(VolumeProfile::default);
-        
+
         profile.hourly_volumes[hour] += quantity.as_f64();
         profile.daily_volume += quantity.as_f64();
 
@@ -138,7 +144,7 @@ impl TimeFeatures {
                 self.roll_day(instrument_id);
             }
         }
-        
+
         self.last_update = Some(dt);
     }
 
@@ -148,11 +154,10 @@ impl TimeFeatures {
             // Update rolling averages
             let alpha = 0.05; // Exponential decay factor
             for hour in 0..24 {
-                profile.avg_hourly_volumes[hour] = 
-                    alpha * profile.hourly_volumes[hour] + 
-                    (1.0 - alpha) * profile.avg_hourly_volumes[hour];
+                profile.avg_hourly_volumes[hour] = alpha * profile.hourly_volumes[hour]
+                    + (1.0 - alpha) * profile.avg_hourly_volumes[hour];
             }
-            
+
             // Reset daily volumes
             profile.hourly_volumes = [0.0; 24];
             profile.daily_volume = 0.0;
@@ -199,7 +204,7 @@ impl TimeFeatures {
 
         let current_seconds = dt.hour() * 3600 + dt.minute() * 60 + dt.second();
         let close_seconds = close_hour * 3600;
-        
+
         if close_seconds > current_seconds {
             Some((close_seconds - current_seconds) as f64)
         } else {
@@ -221,7 +226,7 @@ impl TimeFeatures {
 
         let current_seconds = dt.hour() * 3600 + dt.minute() * 60 + dt.second();
         let open_seconds = open_hour * 3600;
-        
+
         if current_seconds >= open_seconds {
             Some((current_seconds - open_seconds) as f64)
         } else {
@@ -230,7 +235,11 @@ impl TimeFeatures {
     }
 
     /// Calculate session volume percentile
-    pub fn session_volume_percentile(&self, instrument_id: InstrumentId, timestamp: u64) -> Option<f64> {
+    pub fn session_volume_percentile(
+        &self,
+        instrument_id: InstrumentId,
+        timestamp: u64,
+    ) -> Option<f64> {
         let profile = self.volume_profiles.get(&instrument_id)?;
         if profile.days_tracked < 5 {
             return None; // Not enough history
@@ -238,11 +247,11 @@ impl TimeFeatures {
 
         let dt = DateTime::from_timestamp_micros(timestamp as i64).unwrap();
         let hour = dt.hour() as usize;
-        
+
         // Calculate expected volume up to current hour
         let mut expected_volume = 0.0;
         let mut actual_volume = 0.0;
-        
+
         for h in 0..=hour {
             expected_volume += profile.avg_hourly_volumes[h];
             actual_volume += profile.hourly_volumes[h];
@@ -259,7 +268,7 @@ impl TimeFeatures {
     pub fn days_to_expiry(&self, instrument_id: InstrumentId, timestamp: u64) -> Option<i64> {
         let expiry = self.expiry_dates.get(&instrument_id)?;
         let current = DateTime::from_timestamp_micros(timestamp as i64).unwrap();
-        
+
         let duration = expiry.signed_duration_since(current);
         Some(duration.num_days())
     }
@@ -290,45 +299,81 @@ impl TimeFeatures {
     }
 
     /// Add time features to feature vector
-    pub fn add_to_vector(&self, features: &mut FeatureVector, instrument_id: InstrumentId, timestamp: u64) {
+    pub fn add_to_vector(
+        &self,
+        features: &mut FeatureVector,
+        instrument_id: InstrumentId,
+        timestamp: u64,
+    ) {
         let dt = DateTime::from_timestamp_micros(timestamp as i64).unwrap();
-        
+
         // Basic time features
         features.add("hour_of_day", dt.hour() as f64);
         features.add("minute_of_hour", dt.minute() as f64);
         features.add("day_of_week", dt.weekday().num_days_from_monday() as f64);
-        
+
         // Session features
         let session = self.get_session(timestamp);
-        features.add("is_rth", if session == TradingSession::RegularHours { 1.0 } else { 0.0 });
-        features.add("is_pre_market", if session == TradingSession::PreMarket { 1.0 } else { 0.0 });
-        features.add("is_after_hours", if session == TradingSession::AfterHours { 1.0 } else { 0.0 });
-        
+        features.add(
+            "is_rth",
+            if session == TradingSession::RegularHours {
+                1.0
+            } else {
+                0.0
+            },
+        );
+        features.add(
+            "is_pre_market",
+            if session == TradingSession::PreMarket {
+                1.0
+            } else {
+                0.0
+            },
+        );
+        features.add(
+            "is_after_hours",
+            if session == TradingSession::AfterHours {
+                1.0
+            } else {
+                0.0
+            },
+        );
+
         // Session timing
         if let Some(time_to_close) = self.time_to_session_close(timestamp) {
             features.add("seconds_to_session_close", time_to_close);
             features.add("minutes_to_session_close", time_to_close / 60.0);
         }
-        
+
         if let Some(time_since_open) = self.time_since_session_open(timestamp) {
             features.add("seconds_since_session_open", time_since_open);
             features.add("minutes_since_session_open", time_since_open / 60.0);
         }
-        
+
         // Volume profile
         if let Some(percentile) = self.session_volume_percentile(instrument_id, timestamp) {
             features.add("session_volume_percentile", percentile);
         }
-        
+
         // Contract features
         if let Some(days) = self.days_to_expiry(instrument_id, timestamp) {
             features.add("days_to_expiry", days as f64);
             features.add("is_expiry_week", if days <= 7 { 1.0 } else { 0.0 });
         }
-        
-        features.add("is_front_month", if self.is_front_month(instrument_id) { 1.0 } else { 0.0 });
-        features.add("roll_activity", self.roll_activity_indicator(instrument_id, timestamp));
-        
+
+        features.add(
+            "is_front_month",
+            if self.is_front_month(instrument_id) {
+                1.0
+            } else {
+                0.0
+            },
+        );
+        features.add(
+            "roll_activity",
+            self.roll_activity_indicator(instrument_id, timestamp),
+        );
+
         // Intraday buckets (for pattern recognition)
         let hour_bucket = match dt.hour() {
             0..=6 => 0,   // Overnight
@@ -349,8 +394,10 @@ mod tests {
     use chrono::{NaiveDate, TimeZone};
 
     fn timestamp_from_hms(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32) -> u64 {
-        let dt = NaiveDate::from_ymd_opt(year, month, day).unwrap()
-            .and_hms_opt(hour, min, sec).unwrap()
+        let dt = NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .and_hms_opt(hour, min, sec)
+            .unwrap()
             .and_utc();
         dt.timestamp_micros() as u64
     }
@@ -359,29 +406,41 @@ mod tests {
     fn test_session_detection() {
         let config = SessionConfig::default();
         let time_features = TimeFeatures::new(config);
-        
+
         // Test RTH (2:30 PM UTC = 9:30 AM ET)
         let rth_time = timestamp_from_hms(2024, 3, 15, 14, 30, 0); // Friday
-        assert_eq!(time_features.get_session(rth_time), TradingSession::RegularHours);
-        
+        assert_eq!(
+            time_features.get_session(rth_time),
+            TradingSession::RegularHours
+        );
+
         // Test pre-market (12:00 PM UTC = 7:00 AM ET)
         let pre_time = timestamp_from_hms(2024, 3, 15, 12, 0, 0);
-        assert_eq!(time_features.get_session(pre_time), TradingSession::PreMarket);
-        
+        assert_eq!(
+            time_features.get_session(pre_time),
+            TradingSession::PreMarket
+        );
+
         // Test after-hours (9:30 PM UTC = 4:30 PM ET)
         let after_time = timestamp_from_hms(2024, 3, 15, 21, 30, 0);
-        assert_eq!(time_features.get_session(after_time), TradingSession::AfterHours);
-        
+        assert_eq!(
+            time_features.get_session(after_time),
+            TradingSession::AfterHours
+        );
+
         // Test weekend
         let weekend_time = timestamp_from_hms(2024, 3, 16, 14, 30, 0); // Saturday
-        assert_eq!(time_features.get_session(weekend_time), TradingSession::Closed);
+        assert_eq!(
+            time_features.get_session(weekend_time),
+            TradingSession::Closed
+        );
     }
 
     #[test]
     fn test_time_to_close() {
         let config = SessionConfig::default();
         let time_features = TimeFeatures::new(config);
-        
+
         // RTH at 3:00 PM UTC (10:00 AM ET), should be 6 hours to close
         let timestamp = timestamp_from_hms(2024, 3, 15, 15, 0, 0);
         let time_to_close = time_features.time_to_session_close(timestamp);
@@ -392,12 +451,13 @@ mod tests {
     fn test_volume_profile() {
         let config = SessionConfig::default();
         let mut time_features = TimeFeatures::new(config);
-        
+
         let instrument_id = 1;
-        
+
         // Add some volume data
         for day in 1..=10 {
-            for hour in 14..21 { // RTH hours
+            for hour in 14..21 {
+                // RTH hours
                 let timestamp = timestamp_from_hms(2024, 3, day, hour, 0, 0);
                 time_features.update_volume(instrument_id, Quantity::from(100u32), timestamp);
             }
@@ -405,7 +465,7 @@ mod tests {
             let next_day = timestamp_from_hms(2024, 3, day + 1, 0, 0, 0);
             time_features.update_volume(instrument_id, Quantity::from(1u32), next_day);
         }
-        
+
         // Check volume percentile
         let test_time = timestamp_from_hms(2024, 3, 15, 17, 0, 0); // 5 PM UTC
         let percentile = time_features.session_volume_percentile(instrument_id, test_time);
@@ -416,20 +476,20 @@ mod tests {
     fn test_contract_expiry() {
         let config = SessionConfig::default();
         let mut time_features = TimeFeatures::new(config);
-        
+
         let instrument_id = 1;
         let expiry = Utc.with_ymd_and_hms(2024, 3, 29, 21, 0, 0).unwrap();
         time_features.set_expiry(instrument_id, expiry);
-        
+
         // Test 14 days before expiry
         let test_time = timestamp_from_hms(2024, 3, 15, 14, 0, 0);
         let days = time_features.days_to_expiry(instrument_id, test_time);
         assert_eq!(days, Some(14));
-        
+
         // Test roll activity
         let roll_activity = time_features.roll_activity_indicator(instrument_id, test_time);
         assert_eq!(roll_activity, 0.4); // Pre-roll period
-        
+
         // Test closer to expiry (2 days before)
         let close_time = timestamp_from_hms(2024, 3, 27, 14, 0, 0);
         let close_activity = time_features.roll_activity_indicator(instrument_id, close_time);
@@ -440,18 +500,18 @@ mod tests {
     fn test_feature_vector_integration() {
         let config = SessionConfig::default();
         let mut time_features = TimeFeatures::new(config);
-        
+
         let instrument_id = 1;
         let timestamp = timestamp_from_hms(2024, 3, 15, 15, 30, 0); // RTH
-        
+
         // Set up some data
         time_features.set_front_month(instrument_id);
         let expiry = Utc.with_ymd_and_hms(2024, 3, 29, 21, 0, 0).unwrap();
         time_features.set_expiry(instrument_id, expiry);
-        
+
         let mut features = FeatureVector::new(instrument_id, timestamp);
         time_features.add_to_vector(&mut features, instrument_id, timestamp);
-        
+
         // Check key features were added
         assert_eq!(features.get("hour_of_day"), Some(15.0));
         assert_eq!(features.get("day_of_week"), Some(4.0)); // Friday

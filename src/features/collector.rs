@@ -182,10 +182,11 @@ impl FeatureCollector {
         }
 
         // Store in appropriate buffer
-        let buffer = self.buffers
+        let buffer = self
+            .buffers
             .entry(features.instrument_id)
             .or_insert_with(|| FeatureBuffer::new(self.default_capacity));
-        
+
         buffer.push(features);
     }
 
@@ -205,9 +206,13 @@ impl FeatureCollector {
     }
 
     /// Convert feature vectors to a 2D array with consistent feature ordering
-    pub fn to_matrix(&self, instrument_id: InstrumentId, n_samples: Option<usize>) -> Option<Vec<Vec<f64>>> {
+    pub fn to_matrix(
+        &self,
+        instrument_id: InstrumentId,
+        n_samples: Option<usize>,
+    ) -> Option<Vec<Vec<f64>>> {
         let buffer = self.buffers.get(&instrument_id)?;
-        
+
         let vectors: Vec<&FeatureVector> = if let Some(n) = n_samples {
             buffer.last_n(n)
         } else {
@@ -219,9 +224,11 @@ impl FeatureCollector {
         }
 
         // Convert to matrix with consistent feature ordering
-        let matrix: Vec<Vec<f64>> = vectors.iter()
+        let matrix: Vec<Vec<f64>> = vectors
+            .iter()
             .map(|fv| {
-                self.all_feature_names.iter()
+                self.all_feature_names
+                    .iter()
                     .map(|name| fv.get(name).unwrap_or(0.0))
                     .collect()
             })
@@ -232,10 +239,9 @@ impl FeatureCollector {
 
     /// Get latest features for all instruments
     pub fn latest_all(&self) -> HashMap<InstrumentId, &FeatureVector> {
-        self.buffers.iter()
-            .filter_map(|(id, buffer)| {
-                buffer.latest().map(|fv| (*id, fv))
-            })
+        self.buffers
+            .iter()
+            .filter_map(|(id, buffer)| buffer.latest().map(|fv| (*id, fv)))
             .collect()
     }
 
@@ -285,15 +291,15 @@ mod tests {
     #[test]
     fn test_feature_vector() {
         let mut fv = FeatureVector::new(1, 1000);
-        
+
         fv.add("spread", 0.5);
         fv.add("volume", 100.0);
         fv.add("volatility", 0.02);
-        
+
         assert_eq!(fv.len(), 3);
         assert_eq!(fv.get("spread"), Some(0.5));
         assert_eq!(fv.get("volume"), Some(100.0));
-        
+
         let values = fv.values();
         assert_eq!(values.len(), 3);
         assert_eq!(values[0], 0.5); // spread was added first
@@ -302,19 +308,19 @@ mod tests {
     #[test]
     fn test_feature_buffer() {
         let mut buffer = FeatureBuffer::new(3);
-        
+
         for i in 0..5 {
             let mut fv = FeatureVector::new(1, i * 1000);
             fv.add("price", 100.0 + i as f64);
             buffer.push(fv);
         }
-        
+
         // Should only keep last 3
         assert_eq!(buffer.len(), 3);
-        
+
         let latest = buffer.latest().unwrap();
         assert_eq!(latest.get("price"), Some(104.0));
-        
+
         let last_2 = buffer.last_n(2);
         assert_eq!(last_2.len(), 2);
         assert_eq!(last_2[0].get("price"), Some(103.0));
@@ -324,7 +330,7 @@ mod tests {
     #[test]
     fn test_feature_collector() {
         let mut collector = FeatureCollector::with_capacity(10);
-        
+
         // Add features for multiple instruments
         for i in 0..3 {
             let mut fv = FeatureVector::new(1, i * 1000);
@@ -332,22 +338,22 @@ mod tests {
             fv.add("feature_b", i as f64 * 2.0);
             collector.collect(fv);
         }
-        
+
         for i in 0..2 {
             let mut fv = FeatureVector::new(2, i * 1000);
             fv.add("feature_a", i as f64 * 10.0);
             fv.add("feature_c", i as f64 * 3.0);
             collector.collect(fv);
         }
-        
+
         assert_eq!(collector.num_instruments(), 2);
         assert_eq!(collector.num_features(), 3); // feature_a, feature_b, feature_c
         assert_eq!(collector.total_vectors(), 5);
-        
+
         // Check global feature ordering
         let feature_names = collector.feature_names();
         assert_eq!(feature_names.len(), 3);
-        
+
         // Convert to matrix
         let matrix = collector.to_matrix(1, None).unwrap();
         assert_eq!(matrix.len(), 3); // 3 samples
@@ -357,25 +363,25 @@ mod tests {
     #[test]
     fn test_consistent_feature_ordering() {
         let mut collector = FeatureCollector::new();
-        
+
         // Add features in different orders
         let mut fv1 = FeatureVector::new(1, 1000);
         fv1.add("a", 1.0);
         fv1.add("b", 2.0);
         collector.collect(fv1);
-        
+
         let mut fv2 = FeatureVector::new(1, 2000);
         fv2.add("b", 3.0);
         fv2.add("c", 4.0);
         fv2.add("a", 5.0);
         collector.collect(fv2);
-        
+
         let matrix = collector.to_matrix(1, None).unwrap();
         assert_eq!(matrix.len(), 2);
-        
+
         // First vector: [1.0, 2.0, 0.0] (a, b, c)
         assert_eq!(matrix[0], vec![1.0, 2.0, 0.0]);
-        
+
         // Second vector: [5.0, 3.0, 4.0] (a, b, c)
         assert_eq!(matrix[1], vec![5.0, 3.0, 4.0]);
     }

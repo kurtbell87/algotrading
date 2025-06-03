@@ -21,9 +21,16 @@ pub enum MarketDataEvent {
 /// Order book events
 #[derive(Debug, Clone)]
 pub enum OrderBookEvent {
-    Updated { instrument_id: InstrumentId },
-    Cleared { instrument_id: InstrumentId },
-    Snapshot { instrument_id: InstrumentId, depth: BookDepth },
+    Updated {
+        instrument_id: InstrumentId,
+    },
+    Cleared {
+        instrument_id: InstrumentId,
+    },
+    Snapshot {
+        instrument_id: InstrumentId,
+        depth: BookDepth,
+    },
 }
 
 /// Execution events
@@ -39,13 +46,26 @@ pub enum ExecutionEvent {
 /// Risk events
 #[derive(Debug, Clone)]
 pub enum RiskEvent {
-    LimitBreached { limit_type: String, current: f64, limit: f64 },
-    PositionUpdate { instrument_id: InstrumentId, position: Position },
+    LimitBreached {
+        limit_type: String,
+        current: f64,
+        limit: f64,
+    },
+    PositionUpdate {
+        instrument_id: InstrumentId,
+        position: Position,
+    },
 }
 
 /// Strategy events
 #[derive(Debug, Clone)]
 pub enum StrategyEvent {
-    Signal { instrument_id: InstrumentId, signal: f64 },
-    StateChange { strategy: String, state: String },
+    Signal {
+        instrument_id: InstrumentId,
+        signal: f64,
+    },
+    StateChange {
+        strategy: String,
+        state: String,
+    },
 }

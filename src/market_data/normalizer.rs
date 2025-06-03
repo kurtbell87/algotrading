@@ -1,7 +1,4 @@
-use crate::core::{
-    BookUpdate, BookUpdateType, MarketUpdate,
-    Price, Quantity, Side, Trade,
-};
+use crate::core::{BookUpdate, BookUpdateType, MarketUpdate, Price, Quantity, Side, Trade};
 use databento::dbn::{
     enums::{Action, Side as DbnSide},
     record::MboMsg,

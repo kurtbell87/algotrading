@@ -213,32 +213,32 @@ impl FlowFeatures {
         // Calculate flow metrics
         self.flow_metrics.trade_count = self.trades.len() as u32;
         let total_volume = self.flow_metrics.buy_volume + self.flow_metrics.sell_volume;
-        
+
         if total_volume > 0.0 {
-            self.flow_metrics.flow_imbalance = 
+            self.flow_metrics.flow_imbalance =
                 (self.flow_metrics.buy_volume - self.flow_metrics.sell_volume) / total_volume;
             self.flow_metrics.avg_trade_size = total_volume / self.flow_metrics.trade_count as f64;
         }
         self.flow_metrics.net_flow = self.flow_metrics.buy_volume - self.flow_metrics.sell_volume;
 
         // Calculate aggression metrics
-        let total_aggressive = self.aggression_metrics.aggressive_buy_volume + 
-                              self.aggression_metrics.aggressive_sell_volume;
-        let total_passive = self.aggression_metrics.passive_buy_volume + 
-                           self.aggression_metrics.passive_sell_volume;
-        
+        let total_aggressive = self.aggression_metrics.aggressive_buy_volume
+            + self.aggression_metrics.aggressive_sell_volume;
+        let total_passive = self.aggression_metrics.passive_buy_volume
+            + self.aggression_metrics.passive_sell_volume;
+
         if total_aggressive + total_passive > 0.0 {
-            self.aggression_metrics.aggressive_ratio = 
+            self.aggression_metrics.aggressive_ratio =
                 total_aggressive / (total_aggressive + total_passive);
         }
 
         if self.flow_metrics.buy_volume > 0.0 {
-            self.aggression_metrics.buy_aggression_ratio = 
+            self.aggression_metrics.buy_aggression_ratio =
                 self.aggression_metrics.aggressive_buy_volume / self.flow_metrics.buy_volume;
         }
 
         if self.flow_metrics.sell_volume > 0.0 {
-            self.aggression_metrics.sell_aggression_ratio = 
+            self.aggression_metrics.sell_aggression_ratio =
                 self.aggression_metrics.aggressive_sell_volume / self.flow_metrics.sell_volume;
         }
 
@@ -255,8 +255,9 @@ impl FlowFeatures {
             return;
         }
 
-        let time_span = (self.trades.back().unwrap().timestamp - 
-                        self.trades.front().unwrap().timestamp) as f64 / 1_000_000.0; // Convert to seconds
+        let time_span = (self.trades.back().unwrap().timestamp
+            - self.trades.front().unwrap().timestamp) as f64
+            / 1_000_000.0; // Convert to seconds
 
         if time_span > 0.0 {
             let buy_count = self.trades.iter().filter(|t| t.is_buy).count() as f64;
@@ -275,9 +276,12 @@ impl FlowFeatures {
 
             // Calculate volatility (standard deviation)
             let mean = self.arrival_metrics.avg_inter_arrival_time;
-            let variance = self.inter_arrival_times.iter()
+            let variance = self
+                .inter_arrival_times
+                .iter()
                 .map(|&x| (x - mean).powi(2))
-                .sum::<f64>() / count;
+                .sum::<f64>()
+                / count;
             self.arrival_metrics.arrival_rate_volatility = variance.sqrt();
         }
     }
@@ -315,9 +319,7 @@ impl FlowFeatures {
 
         // Calculate standard deviation
         let mean = trade_sizes.iter().sum::<f64>() / len as f64;
-        let variance = trade_sizes.iter()
-            .map(|&x| (x - mean).powi(2))
-            .sum::<f64>() / len as f64;
+        let variance = trade_sizes.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / len as f64;
         self.size_metrics.trade_size_std = variance.sqrt();
     }
 
@@ -333,20 +335,44 @@ impl FlowFeatures {
 
         // Aggression metrics
         features.add("aggression_ratio", self.aggression_metrics.aggressive_ratio);
-        features.add("buy_aggression_ratio", self.aggression_metrics.buy_aggression_ratio);
-        features.add("sell_aggression_ratio", self.aggression_metrics.sell_aggression_ratio);
+        features.add(
+            "buy_aggression_ratio",
+            self.aggression_metrics.buy_aggression_ratio,
+        );
+        features.add(
+            "sell_aggression_ratio",
+            self.aggression_metrics.sell_aggression_ratio,
+        );
 
         // Arrival rate metrics
         features.add("arrival_rate_buy", self.arrival_metrics.buy_arrival_rate);
         features.add("arrival_rate_sell", self.arrival_metrics.sell_arrival_rate);
-        features.add("arrival_rate_total", self.arrival_metrics.total_arrival_rate);
-        features.add("inter_arrival_time_avg", self.arrival_metrics.avg_inter_arrival_time);
-        features.add("arrival_rate_volatility", self.arrival_metrics.arrival_rate_volatility);
+        features.add(
+            "arrival_rate_total",
+            self.arrival_metrics.total_arrival_rate,
+        );
+        features.add(
+            "inter_arrival_time_avg",
+            self.arrival_metrics.avg_inter_arrival_time,
+        );
+        features.add(
+            "arrival_rate_volatility",
+            self.arrival_metrics.arrival_rate_volatility,
+        );
 
         // Size distribution metrics
-        features.add("trade_size_small_volume", self.size_metrics.small_trade_volume);
-        features.add("trade_size_medium_volume", self.size_metrics.medium_trade_volume);
-        features.add("trade_size_large_volume", self.size_metrics.large_trade_volume);
+        features.add(
+            "trade_size_small_volume",
+            self.size_metrics.small_trade_volume,
+        );
+        features.add(
+            "trade_size_medium_volume",
+            self.size_metrics.medium_trade_volume,
+        );
+        features.add(
+            "trade_size_large_volume",
+            self.size_metrics.large_trade_volume,
+        );
         features.add("trade_size_max", self.size_metrics.max_trade_size);
         features.add("trade_size_std", self.size_metrics.trade_size_std);
     }
@@ -365,15 +391,15 @@ mod tests {
     #[test]
     fn test_flow_imbalance() {
         let mut flow = FlowFeatures::with_window(10_000_000); // 10 seconds
-        
+
         // Add some buy trades
         flow.update_trade(Price::from(100i64), Quantity::from(10u32), true, 1000);
         flow.update_trade(Price::from(101i64), Quantity::from(20u32), true, 2000);
-        
+
         // Add some sell trades
         flow.update_trade(Price::from(99i64), Quantity::from(5u32), false, 3000);
         flow.update_trade(Price::from(98i64), Quantity::from(5u32), false, 4000);
-        
+
         // Buy volume: 30, Sell volume: 10
         // Imbalance: (30 - 10) / (30 + 10) = 0.5
         assert_eq!(flow.flow_metrics.buy_volume, 30.0);
@@ -385,14 +411,14 @@ mod tests {
     #[test]
     fn test_arrival_rates() {
         let mut flow = FlowFeatures::with_window(10_000_000); // 10 seconds
-        
+
         // Add trades over 1 second
         flow.update_trade(Price::from(100i64), Quantity::from(10u32), true, 0);
         flow.update_trade(Price::from(100i64), Quantity::from(10u32), true, 250_000);
         flow.update_trade(Price::from(100i64), Quantity::from(10u32), false, 500_000);
         flow.update_trade(Price::from(100i64), Quantity::from(10u32), true, 750_000);
         flow.update_trade(Price::from(100i64), Quantity::from(10u32), false, 1_000_000);
-        
+
         // 5 trades in 1 second = 5 trades/sec
         assert_eq!(flow.arrival_metrics.total_arrival_rate, 5.0);
         // 3 buys in 1 second = 3 buys/sec
@@ -404,13 +430,13 @@ mod tests {
     #[test]
     fn test_window_removal() {
         let mut flow = FlowFeatures::with_window(1_000_000); // 1 second window
-        
+
         // Add old trade
         flow.update_trade(Price::from(100i64), Quantity::from(10u32), true, 0);
-        
+
         // Add new trade after window
         flow.update_trade(Price::from(100i64), Quantity::from(20u32), true, 2_000_000);
-        
+
         // Old trade should be removed
         assert_eq!(flow.trades.len(), 1);
         assert_eq!(flow.flow_metrics.buy_volume, 20.0);

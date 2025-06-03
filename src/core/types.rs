@@ -17,11 +17,11 @@ impl Price {
     pub fn new(value: i64) -> Self {
         Self(value)
     }
-    
+
     pub fn as_f64(&self) -> f64 {
         self.0 as f64 / 1e9
     }
-    
+
     pub fn from_f64(value: f64) -> Self {
         Self((value * 1e9) as i64)
     }
@@ -53,15 +53,15 @@ impl Quantity {
     pub fn new(value: u32) -> Self {
         Self(value)
     }
-    
+
     pub fn as_u32(&self) -> u32 {
         self.0
     }
-    
+
     pub fn as_f64(&self) -> f64 {
         self.0 as f64
     }
-    
+
     pub fn as_i64(&self) -> i64 {
         self.0 as i64
     }
@@ -175,8 +175,18 @@ pub struct BookUpdate {
 
 #[derive(Debug, Clone)]
 pub enum BookUpdateType {
-    Add { order_id: OrderId, side: Side, price: Price, quantity: Quantity },
-    Modify { order_id: OrderId, new_quantity: Quantity },
-    Cancel { order_id: OrderId },
+    Add {
+        order_id: OrderId,
+        side: Side,
+        price: Price,
+        quantity: Quantity,
+    },
+    Modify {
+        order_id: OrderId,
+        new_quantity: Quantity,
+    },
+    Cancel {
+        order_id: OrderId,
+    },
     Clear,
 }

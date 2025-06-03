@@ -6,7 +6,7 @@
 //! - Dimensionality reduction preparation
 //! - Missing value handling
 
-use crate::features::collector::{FeatureVector, FeatureCollector};
+use crate::features::collector::{FeatureCollector, FeatureVector};
 use std::collections::HashMap;
 
 /// Statistics for a single feature
@@ -64,21 +64,22 @@ impl FeatureScaler {
     /// Fit the scaler on a collection of feature vectors
     pub fn fit(&mut self, collector: &FeatureCollector, instrument_id: u32) {
         self.stats.clear();
-        
+
         if let Some(buffer) = collector.get_buffer(instrument_id) {
             // First pass: collect values
             let mut feature_values: HashMap<String, Vec<f64>> = HashMap::new();
-            
+
             for feature_vec in buffer.buffer.iter() {
                 for name in feature_vec.feature_names() {
                     if let Some(value) = feature_vec.get(name) {
-                        feature_values.entry(name.clone())
+                        feature_values
+                            .entry(name.clone())
                             .or_insert_with(Vec::new)
                             .push(value);
                     }
                 }
             }
-            
+
             // Calculate statistics
             for (name, values) in feature_values {
                 if !values.is_empty() {
@@ -98,13 +99,11 @@ impl FeatureScaler {
     fn calculate_zscore_stats(&self, values: &[f64]) -> FeatureStats {
         let count = values.len();
         let mean = values.iter().sum::<f64>() / count as f64;
-        
-        let variance = values.iter()
-            .map(|&x| (x - mean).powi(2))
-            .sum::<f64>() / count as f64;
-        
+
+        let variance = values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / count as f64;
+
         let std = variance.sqrt().max(1e-8); // Avoid division by zero
-        
+
         FeatureStats {
             mean,
             std,
@@ -118,7 +117,7 @@ impl FeatureScaler {
     fn calculate_minmax_stats(&self, values: &[f64]) -> FeatureStats {
         let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
         let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        
+
         FeatureStats {
             mean: 0.0, // Not used for min-max
             std: 1.0,  // Not used for min-max
@@ -132,20 +131,20 @@ impl FeatureScaler {
     fn calculate_robust_stats(&self, values: &[f64]) -> FeatureStats {
         let mut sorted = values.to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        
+
         let median = if sorted.len() % 2 == 0 {
             (sorted[sorted.len() / 2 - 1] + sorted[sorted.len() / 2]) / 2.0
         } else {
             sorted[sorted.len() / 2]
         };
-        
+
         let q1_idx = sorted.len() / 4;
         let q3_idx = 3 * sorted.len() / 4;
         let iqr = sorted[q3_idx] - sorted[q1_idx];
-        
+
         FeatureStats {
-            mean: median,  // Store median in mean field
-            std: iqr.max(1e-8),     // Store IQR in std field
+            mean: median,       // Store median in mean field
+            std: iqr.max(1e-8), // Store IQR in std field
             min: sorted[0],
             max: sorted[sorted.len() - 1],
             count: values.len(),
@@ -183,14 +182,14 @@ impl FeatureScaler {
     /// Inverse transform a value
     pub fn inverse_transform(&self, feature_name: &str, scaled_value: f64) -> Option<f64> {
         let stats = self.stats.get(feature_name)?;
-        
+
         let original = match self.method {
             ScalingMethod::ZScore => scaled_value * stats.std + stats.mean,
             ScalingMethod::MinMax => scaled_value * (stats.max - stats.min) + stats.min,
             ScalingMethod::Robust => scaled_value * stats.std + stats.mean,
             ScalingMethod::None => scaled_value,
         };
-        
+
         Some(original)
     }
 }
@@ -236,11 +235,14 @@ impl FeatureEngineer {
     pub fn transform(&self, features: &mut FeatureVector) {
         // Get base features
         let base_features: Vec<(String, f64)> = if let Some(ref selected) = self.selected_features {
-            selected.iter()
+            selected
+                .iter()
                 .filter_map(|name| features.get(name).map(|val| (name.clone(), val)))
                 .collect()
         } else {
-            features.feature_names().iter()
+            features
+                .feature_names()
+                .iter()
                 .filter_map(|name| features.get(name).map(|val| (name.clone(), val)))
                 .collect()
         };
@@ -290,8 +292,8 @@ pub struct FeatureValidator {
 impl FeatureValidator {
     pub fn new() -> Self {
         Self {
-            max_missing_rate: 0.1,  // 10% missing allowed
-            min_variance: 1e-8,     // Near-zero variance threshold
+            max_missing_rate: 0.1, // 10% missing allowed
+            min_variance: 1e-8,    // Near-zero variance threshold
             required_features: vec![],
         }
     }
@@ -305,20 +307,24 @@ impl FeatureValidator {
     /// Validate features in a collector
     pub fn validate(&self, collector: &FeatureCollector, instrument_id: u32) -> ValidationReport {
         let mut report = ValidationReport::default();
-        
+
         // Check for required features first if no buffer exists
         if collector.get_buffer(instrument_id).is_none() {
             if !self.required_features.is_empty() {
                 for required in &self.required_features {
-                    report.issues.push(format!("Required feature '{}' is missing", required));
+                    report
+                        .issues
+                        .push(format!("Required feature '{}' is missing", required));
                 }
                 report.valid = false;
             } else {
-                report.issues.push("No data available for instrument".to_string());
+                report
+                    .issues
+                    .push("No data available for instrument".to_string());
             }
             return report;
         }
-        
+
         if let Some(buffer) = collector.get_buffer(instrument_id) {
             let total_samples = buffer.len();
             if total_samples == 0 {
@@ -329,12 +335,13 @@ impl FeatureValidator {
             // Collect feature statistics
             let mut feature_counts: HashMap<String, usize> = HashMap::new();
             let mut feature_values: HashMap<String, Vec<f64>> = HashMap::new();
-            
+
             for feature_vec in buffer.buffer.iter() {
                 for name in feature_vec.feature_names() {
                     if let Some(value) = feature_vec.get(name) {
                         *feature_counts.entry(name.clone()).or_insert(0) += 1;
-                        feature_values.entry(name.clone())
+                        feature_values
+                            .entry(name.clone())
                             .or_insert_with(Vec::new)
                             .push(value);
                     }
@@ -344,12 +351,12 @@ impl FeatureValidator {
             // Check each feature
             for (name, count) in &feature_counts {
                 let missing_rate = 1.0 - (*count as f64 / total_samples as f64);
-                
+
                 // Check missing rate
                 if missing_rate > self.max_missing_rate && !self.required_features.contains(name) {
                     report.issues.push(format!(
-                        "Feature '{}' has {:.1}% missing values", 
-                        name, 
+                        "Feature '{}' has {:.1}% missing values",
+                        name,
                         missing_rate * 100.0
                     ));
                     report.features_to_drop.push(name.clone());
@@ -358,15 +365,13 @@ impl FeatureValidator {
                 // Check variance
                 if let Some(values) = feature_values.get(name) {
                     let mean = values.iter().sum::<f64>() / values.len() as f64;
-                    let variance = values.iter()
-                        .map(|&x| (x - mean).powi(2))
-                        .sum::<f64>() / values.len() as f64;
-                    
+                    let variance = values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>()
+                        / values.len() as f64;
+
                     if variance < self.min_variance && !self.required_features.contains(name) {
-                        report.issues.push(format!(
-                            "Feature '{}' has near-zero variance", 
-                            name
-                        ));
+                        report
+                            .issues
+                            .push(format!("Feature '{}' has near-zero variance", name));
                         report.features_to_drop.push(name.clone());
                     }
                 }
@@ -375,10 +380,9 @@ impl FeatureValidator {
             // Check for required features
             for required in &self.required_features {
                 if !feature_counts.contains_key(required) {
-                    report.issues.push(format!(
-                        "Required feature '{}' is missing", 
-                        required
-                    ));
+                    report
+                        .issues
+                        .push(format!("Required feature '{}' is missing", required));
                 }
             }
 
@@ -412,7 +416,7 @@ mod tests {
     #[test]
     fn test_zscore_scaling() {
         let mut collector = FeatureCollector::new();
-        
+
         // Add some feature vectors
         for i in 0..10 {
             let mut fv = FeatureVector::new(1, i * 1000);
@@ -434,7 +438,7 @@ mod tests {
     #[test]
     fn test_minmax_scaling() {
         let mut collector = FeatureCollector::new();
-        
+
         // Add features with known range
         for i in 0..=10 {
             let mut fv = FeatureVector::new(1, i * 1000);
@@ -456,17 +460,17 @@ mod tests {
     #[test]
     fn test_polynomial_features() {
         let mut features = create_test_features();
-        
+
         let engineer = FeatureEngineer::new()
             .with_polynomial(2)
             .with_selection(vec!["price".to_string(), "volume".to_string()]);
-        
+
         engineer.transform(&mut features);
 
         // Check polynomial features
         assert_eq!(features.get("price_pow2"), Some(10000.0)); // 100^2
         assert_eq!(features.get("volume_pow2"), Some(2500.0)); // 50^2
-        
+
         // Check log features
         assert!(features.get("price_log").is_some());
         assert!(features.get("volume_log").is_some());
@@ -475,11 +479,11 @@ mod tests {
     #[test]
     fn test_interaction_features() {
         let mut features = create_test_features();
-        
+
         let engineer = FeatureEngineer::new()
             .with_interactions()
             .with_selection(vec!["price".to_string(), "volume".to_string()]);
-        
+
         engineer.transform(&mut features);
 
         // Check interaction
@@ -489,7 +493,7 @@ mod tests {
     #[test]
     fn test_feature_validation() {
         let mut collector = FeatureCollector::new();
-        
+
         // Add features with different characteristics
         for i in 0..10 {
             let mut fv = FeatureVector::new(1, i * 1000);
@@ -505,20 +509,32 @@ mod tests {
         let report = validator.validate(&collector, 1);
 
         assert!(!report.valid);
-        assert!(report.features_to_drop.contains(&"constant_feature".to_string()));
-        assert!(report.features_to_drop.contains(&"sparse_feature".to_string()));
+        assert!(
+            report
+                .features_to_drop
+                .contains(&"constant_feature".to_string())
+        );
+        assert!(
+            report
+                .features_to_drop
+                .contains(&"sparse_feature".to_string())
+        );
     }
 
     #[test]
     fn test_required_features() {
         let collector = FeatureCollector::new();
-        
-        let validator = FeatureValidator::new()
-            .with_required(vec!["critical_feature".to_string()]);
-        
+
+        let validator = FeatureValidator::new().with_required(vec!["critical_feature".to_string()]);
+
         let report = validator.validate(&collector, 1);
-        
+
         assert!(!report.valid);
-        assert!(report.issues.iter().any(|issue| issue.contains("critical_feature")));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.contains("critical_feature"))
+        );
     }
 }

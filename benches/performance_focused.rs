@@ -2,26 +2,28 @@
 //!
 //! This benchmark specifically targets the 5.8x performance gap
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use algotrading::core::types::{InstrumentId, Price, Quantity};
 use algotrading::core::Side;
-use algotrading::market_data::events::{MarketEvent, TradeEvent, BBOUpdate};
-use algotrading::strategy::{Strategy, StrategyConfig, StrategyContext, StrategyOutput, StrategyError};
+use algotrading::core::types::{InstrumentId, Price, Quantity};
 use algotrading::features::{FeaturePosition, RiskLimits};
+use algotrading::market_data::events::{BBOUpdate, MarketEvent, TradeEvent};
 use algotrading::strategies::{MeanReversionStrategy, mean_reversion::MeanReversionConfig};
-use std::time::{Duration, Instant};
+use algotrading::strategy::{
+    Strategy, StrategyConfig, StrategyContext, StrategyError, StrategyOutput,
+};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 /// Generate market events for benchmarking
 fn generate_market_events(num_events: usize) -> Vec<MarketEvent> {
     let mut events = Vec::with_capacity(num_events);
     let mut timestamp = 1_000_000;
     let mut price = 100_000_000;
-    
+
     for i in 0..num_events {
         timestamp += 100;
         price += ((i % 20) as i64) - 10;
-        
+
         if i % 2 == 0 {
             events.push(MarketEvent::Trade(TradeEvent {
                 instrument_id: 1,
@@ -46,7 +48,7 @@ fn generate_market_events(num_events: usize) -> Vec<MarketEvent> {
             }));
         }
     }
-    
+
     events
 }
 
@@ -65,36 +67,36 @@ fn create_strategy_context() -> StrategyContext {
 fn benchmark_raw_event_iteration(c: &mut Criterion) {
     let mut group = c.benchmark_group("raw_event_iteration");
     group.measurement_time(Duration::from_secs(2));
-    
+
     for num_events in [100_000, 1_000_000].iter() {
         group.throughput(Throughput::Elements(*num_events as u64));
-        
+
         group.bench_with_input(
             BenchmarkId::from_parameter(num_events),
             num_events,
             |b, &num_events| {
                 let events = generate_market_events(num_events);
-                
+
                 b.iter(|| {
                     let start = Instant::now();
-                    
+
                     for event in &events {
                         black_box(event);
                     }
-                    
+
                     let elapsed = start.elapsed();
                     let throughput = events.len() as f64 / elapsed.as_secs_f64();
-                    
+
                     if num_events == 1_000_000 {
                         println!("\nRaw iteration: {:.0} events/second", throughput);
                     }
-                    
+
                     black_box(throughput);
                 });
             },
         );
     }
-    
+
     group.finish();
 }
 
@@ -102,44 +104,44 @@ fn benchmark_raw_event_iteration(c: &mut Criterion) {
 fn benchmark_event_cloning_overhead(c: &mut Criterion) {
     let mut group = c.benchmark_group("event_cloning");
     group.measurement_time(Duration::from_secs(2));
-    
+
     let num_events = 100_000;
     let events = generate_market_events(num_events);
-    
+
     group.bench_function("with_cloning", |b| {
         b.iter(|| {
             let start = Instant::now();
             let mut cloned_events = Vec::with_capacity(events.len());
-            
+
             for event in &events {
                 cloned_events.push(event.clone()); // Simulate current cloning overhead
                 black_box(&cloned_events.last());
             }
-            
+
             let elapsed = start.elapsed();
             let throughput = events.len() as f64 / elapsed.as_secs_f64();
-            
+
             println!("\nWith cloning: {:.0} events/second", throughput);
             black_box(throughput);
         });
     });
-    
+
     group.bench_function("without_cloning", |b| {
         b.iter(|| {
             let start = Instant::now();
-            
+
             for event in &events {
                 black_box(event); // Just reference, no cloning
             }
-            
+
             let elapsed = start.elapsed();
             let throughput = events.len() as f64 / elapsed.as_secs_f64();
-            
+
             println!("\nWithout cloning: {:.0} events/second", throughput);
             black_box(throughput);
         });
     });
-    
+
     group.finish();
 }
 
@@ -147,13 +149,13 @@ fn benchmark_event_cloning_overhead(c: &mut Criterion) {
 fn benchmark_context_overhead(c: &mut Criterion) {
     let mut group = c.benchmark_group("context_creation");
     group.measurement_time(Duration::from_secs(2));
-    
+
     let num_iterations = 100_000;
-    
+
     group.bench_function("context_creation", |b| {
         b.iter(|| {
             let start = Instant::now();
-            
+
             for i in 0..num_iterations {
                 let context = StrategyContext::new(
                     format!("strategy_{}", i),
@@ -164,15 +166,15 @@ fn benchmark_context_overhead(c: &mut Criterion) {
                 );
                 black_box(context);
             }
-            
+
             let elapsed = start.elapsed();
             let throughput = num_iterations as f64 / elapsed.as_secs_f64();
-            
+
             println!("\nContext creation: {:.0} contexts/second", throughput);
             black_box(throughput);
         });
     });
-    
+
     group.finish();
 }
 
@@ -180,47 +182,47 @@ fn benchmark_context_overhead(c: &mut Criterion) {
 fn benchmark_string_allocations(c: &mut Criterion) {
     let mut group = c.benchmark_group("string_allocations");
     group.measurement_time(Duration::from_secs(2));
-    
+
     let num_operations = 100_000;
-    
+
     group.bench_function("hashmap_with_strings", |b| {
         b.iter(|| {
             let start = Instant::now();
             let mut features: HashMap<String, f64> = HashMap::new();
-            
+
             for i in 0..num_operations {
                 features.insert(format!("feature_{}", i % 10), i as f64);
                 features.insert("spread".to_string(), 0.05);
                 features.insert("volume".to_string(), 1000.0);
             }
-            
+
             let elapsed = start.elapsed();
             let throughput = (num_operations * 3) as f64 / elapsed.as_secs_f64();
-            
+
             println!("\nString HashMap: {:.0} ops/second", throughput);
             black_box(throughput);
         });
     });
-    
+
     group.bench_function("array_with_indices", |b| {
         b.iter(|| {
             let start = Instant::now();
             let mut features = [0.0f64; 10];
-            
+
             for i in 0..num_operations {
                 features[i % 10] = i as f64;
                 features[0] = 0.05; // spread
                 features[1] = 1000.0; // volume
             }
-            
+
             let elapsed = start.elapsed();
             let throughput = (num_operations * 3) as f64 / elapsed.as_secs_f64();
-            
+
             println!("\nArray indexing: {:.0} ops/second", throughput);
             black_box(throughput);
         });
     });
-    
+
     group.finish();
 }
 
@@ -228,16 +230,16 @@ fn benchmark_string_allocations(c: &mut Criterion) {
 fn benchmark_lock_contention(c: &mut Criterion) {
     let mut group = c.benchmark_group("lock_contention");
     group.measurement_time(Duration::from_secs(2));
-    
+
     use std::sync::{Arc, RwLock};
-    
+
     let num_operations = 10_000;
     let data = Arc::new(RwLock::new(HashMap::<u32, f64>::new()));
-    
+
     group.bench_function("with_locks", |b| {
         b.iter(|| {
             let start = Instant::now();
-            
+
             for i in 0..num_operations {
                 {
                     let mut map = data.write().unwrap();
@@ -248,33 +250,33 @@ fn benchmark_lock_contention(c: &mut Criterion) {
                     black_box(map.get(&(i % 100)));
                 }
             }
-            
+
             let elapsed = start.elapsed();
             let throughput = (num_operations * 2) as f64 / elapsed.as_secs_f64();
-            
+
             println!("\nWith locks: {:.0} ops/second", throughput);
             black_box(throughput);
         });
     });
-    
+
     group.bench_function("without_locks", |b| {
         b.iter(|| {
             let start = Instant::now();
             let mut local_data = HashMap::<u32, f64>::new();
-            
+
             for i in 0..num_operations {
                 local_data.insert(i % 100, i as f64);
                 black_box(local_data.get(&(i % 100)));
             }
-            
+
             let elapsed = start.elapsed();
             let throughput = (num_operations * 2) as f64 / elapsed.as_secs_f64();
-            
+
             println!("\nWithout locks: {:.0} ops/second", throughput);
             black_box(throughput);
         });
     });
-    
+
     group.finish();
 }
 
@@ -282,16 +284,16 @@ fn benchmark_lock_contention(c: &mut Criterion) {
 fn benchmark_optimized_strategy_processing(c: &mut Criterion) {
     let mut group = c.benchmark_group("optimized_strategy");
     group.measurement_time(Duration::from_secs(3));
-    
+
     for num_events in [10_000, 100_000].iter() {
         group.throughput(Throughput::Elements(*num_events as u64));
-        
+
         group.bench_with_input(
             BenchmarkId::from_parameter(num_events),
             num_events,
             |b, &num_events| {
                 let events = generate_market_events(num_events);
-                
+
                 b.iter(|| {
                     // Create strategy once (amortize creation cost)
                     let mut strategy = MeanReversionStrategy::new(
@@ -307,31 +309,31 @@ fn benchmark_optimized_strategy_processing(c: &mut Criterion) {
                             limit_order_offset_ticks: 1,
                         },
                     );
-                    
+
                     // Create context once (reuse)
                     let context = create_strategy_context();
-                    
+
                     let start = Instant::now();
-                    
+
                     // Process events with minimal overhead
                     for event in &events {
                         let _output = strategy.on_market_event(event, &context);
                         // Note: Not processing orders to focus on pure strategy overhead
                     }
-                    
+
                     let elapsed = start.elapsed();
                     let throughput = events.len() as f64 / elapsed.as_secs_f64();
-                    
+
                     if num_events == 100_000 {
                         println!("\nOptimized strategy: {:.0} events/second", throughput);
                     }
-                    
+
                     black_box(throughput);
                 });
             },
         );
     }
-    
+
     group.finish();
 }
 
@@ -339,7 +341,7 @@ fn benchmark_optimized_strategy_processing(c: &mut Criterion) {
 fn benchmark_performance_target(c: &mut Criterion) {
     let mut group = c.benchmark_group("performance_target");
     group.measurement_time(Duration::from_secs(5));
-    
+
     // Test with different batch sizes to find optimal processing
     for batch_size in [1_000, 10_000, 100_000].iter() {
         group.bench_with_input(
@@ -347,7 +349,7 @@ fn benchmark_performance_target(c: &mut Criterion) {
             batch_size,
             |b, &batch_size| {
                 let events = generate_market_events(batch_size);
-                
+
                 b.iter(|| {
                     // Simulate optimized processing pipeline
                     let mut strategy = MeanReversionStrategy::new(
@@ -355,10 +357,10 @@ fn benchmark_performance_target(c: &mut Criterion) {
                         1,
                         MeanReversionConfig::default(),
                     );
-                    
+
                     let context = create_strategy_context();
                     let start = Instant::now();
-                    
+
                     // Batch process events
                     let chunk_size = 1000; // Process in chunks for cache efficiency
                     for chunk in events.chunks(chunk_size) {
@@ -366,22 +368,24 @@ fn benchmark_performance_target(c: &mut Criterion) {
                             let _output = strategy.on_market_event(event, &context);
                         }
                     }
-                    
+
                     let elapsed = start.elapsed();
                     let throughput = events.len() as f64 / elapsed.as_secs_f64();
                     let efficiency = (throughput / 18_000_000.0) * 100.0;
-                    
+
                     if batch_size == 100_000 {
-                        println!("\nBatch processing: {:.0} events/second ({:.1}% of 18M target)", 
-                                throughput, efficiency);
+                        println!(
+                            "\nBatch processing: {:.0} events/second ({:.1}% of 18M target)",
+                            throughput, efficiency
+                        );
                     }
-                    
+
                     black_box(throughput);
                 });
             },
         );
     }
-    
+
     group.finish();
 }
 
@@ -396,7 +400,7 @@ fn benchmark_performance_summary(c: &mut Criterion) {
     println!("3. String allocations: 1.5x overhead");
     println!("4. Context creation: Minor overhead");
     println!("\nRun individual benchmarks to see actual measurements.");
-    
+
     let mut group = c.benchmark_group("summary");
     group.bench_function("performance_analysis", |b| {
         b.iter(|| {

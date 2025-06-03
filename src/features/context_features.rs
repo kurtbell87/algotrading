@@ -178,17 +178,17 @@ impl ContextFeatures {
             self.position_entry_time = Some(timestamp);
         } else if old_quantity.signum() == fill_quantity.signum() {
             // Adding to position
-            let total_cost = self.position.avg_price.as_f64() * old_quantity.abs() as f64 +
-                           fill_price.as_f64() * fill_quantity.abs() as f64;
+            let total_cost = self.position.avg_price.as_f64() * old_quantity.abs() as f64
+                + fill_price.as_f64() * fill_quantity.abs() as f64;
             let total_quantity = old_quantity.abs() + fill_quantity.abs();
             self.position.avg_price = Price::from_f64(total_cost / total_quantity as f64);
         } else {
             // Reducing or flipping position
             let closed_quantity = old_quantity.abs().min(fill_quantity.abs());
-            let pnl = closed_quantity as f64 * 
-                     (fill_price.as_f64() - self.position.avg_price.as_f64()) * 
-                     old_quantity.signum() as f64;
-            
+            let pnl = closed_quantity as f64
+                * (fill_price.as_f64() - self.position.avg_price.as_f64())
+                * old_quantity.signum() as f64;
+
             self.position.realized_pnl += pnl;
             self.update_pnl_tracking(pnl, timestamp);
 
@@ -202,7 +202,9 @@ impl ContextFeatures {
             }
 
             // If flipped, update avg price
-            if self.position.quantity != 0 && old_quantity.signum() != self.position.quantity.signum() {
+            if self.position.quantity != 0
+                && old_quantity.signum() != self.position.quantity.signum()
+            {
                 self.position.avg_price = fill_price;
                 self.position_entry_time = Some(timestamp);
             } else if self.position.quantity == 0 {
@@ -214,7 +216,7 @@ impl ContextFeatures {
     /// Update P&L tracking
     fn update_pnl_tracking(&mut self, pnl_change: f64, timestamp: u64) {
         let total_pnl = self.position.realized_pnl;
-        
+
         // Update history
         self.pnl_history.history.push_back((timestamp, total_pnl));
         if self.pnl_history.history.len() > 1000 {
@@ -227,13 +229,16 @@ impl ContextFeatures {
             self.pnl_history.current_drawdown = 0.0;
         } else {
             self.pnl_history.current_drawdown = self.pnl_history.high_water_mark - total_pnl;
-            self.pnl_history.max_drawdown = self.pnl_history.max_drawdown.max(self.pnl_history.current_drawdown);
+            self.pnl_history.max_drawdown = self
+                .pnl_history
+                .max_drawdown
+                .max(self.pnl_history.current_drawdown);
         }
 
         // Update daily P&L (reset at midnight UTC)
         let day = timestamp / (24 * 3600 * 1_000_000);
         let last_day = self.pnl_history.last_reset / (24 * 3600 * 1_000_000);
-        
+
         if day != last_day {
             self.pnl_history.daily_pnl = pnl_change;
             self.pnl_history.last_reset = timestamp;
@@ -245,7 +250,7 @@ impl ContextFeatures {
     /// Update order activity
     pub fn update_order_sent(&mut self, is_market: bool, timestamp: u64) {
         self.order_activity.order_timestamps.push_back(timestamp);
-        
+
         // Clean old timestamps (older than 1 minute)
         let cutoff = timestamp.saturating_sub(60_000_000); // 60 seconds
         while let Some(&front_time) = self.order_activity.order_timestamps.front() {
@@ -284,8 +289,8 @@ impl ContextFeatures {
         if self.position.quantity == 0 {
             0.0
         } else {
-            self.position.quantity as f64 * 
-            (current_price.as_f64() - self.position.avg_price.as_f64())
+            self.position.quantity as f64
+                * (current_price.as_f64() - self.position.avg_price.as_f64())
         }
     }
 
@@ -311,93 +316,160 @@ impl ContextFeatures {
     }
 
     /// Add context features to feature vector
-    pub fn add_to_vector(&self, features: &mut FeatureVector, current_price: Price, timestamp: u64) {
+    pub fn add_to_vector(
+        &self,
+        features: &mut FeatureVector,
+        current_price: Price,
+        timestamp: u64,
+    ) {
         // Position features
         features.add("position_size", self.position.quantity as f64);
         features.add("position_abs_size", self.position.quantity.abs() as f64);
         features.add("position_side", self.position.quantity.signum() as f64);
-        features.add("is_flat", if self.position.quantity == 0 { 1.0 } else { 0.0 });
-        features.add("is_long", if self.position.quantity > 0 { 1.0 } else { 0.0 });
-        features.add("is_short", if self.position.quantity < 0 { 1.0 } else { 0.0 });
-        
+        features.add(
+            "is_flat",
+            if self.position.quantity == 0 {
+                1.0
+            } else {
+                0.0
+            },
+        );
+        features.add(
+            "is_long",
+            if self.position.quantity > 0 { 1.0 } else { 0.0 },
+        );
+        features.add(
+            "is_short",
+            if self.position.quantity < 0 { 1.0 } else { 0.0 },
+        );
+
         // Inventory management
         let inventory_deviation = (self.position.quantity - self.target_position) as f64;
         features.add("inventory_deviation", inventory_deviation);
-        features.add("inventory_deviation_pct", inventory_deviation / self.risk_limits.max_position as f64);
-        
+        features.add(
+            "inventory_deviation_pct",
+            inventory_deviation / self.risk_limits.max_position as f64,
+        );
+
         // Position utilization
-        features.add("position_utilization", self.position.quantity.abs() as f64 / self.risk_limits.max_position as f64);
+        features.add(
+            "position_utilization",
+            self.position.quantity.abs() as f64 / self.risk_limits.max_position as f64,
+        );
         features.add("max_position_reached", self.position.max_position as f64);
         features.add("min_position_reached", self.position.min_position as f64);
-        
+
         // P&L features
         let unrealized = self.unrealized_pnl(current_price);
         let total_pnl = self.total_pnl(current_price);
-        
+
         features.add("realized_pnl", self.position.realized_pnl);
         features.add("unrealized_pnl", unrealized);
         features.add("total_pnl", total_pnl);
         features.add("daily_pnl", self.pnl_history.daily_pnl);
-        
+
         // Normalized P&L
-        features.add("pnl_per_contract", if self.position.total_volume > 0 {
-            self.position.realized_pnl / self.position.total_volume as f64
-        } else {
-            0.0
-        });
-        
+        features.add(
+            "pnl_per_contract",
+            if self.position.total_volume > 0 {
+                self.position.realized_pnl / self.position.total_volume as f64
+            } else {
+                0.0
+            },
+        );
+
         // Drawdown features
         features.add("current_drawdown", self.pnl_history.current_drawdown);
         features.add("max_drawdown", self.pnl_history.max_drawdown);
-        features.add("drawdown_pct", if self.pnl_history.high_water_mark > 0.0 {
-            self.pnl_history.current_drawdown / self.pnl_history.high_water_mark
-        } else {
-            0.0
-        });
-        
+        features.add(
+            "drawdown_pct",
+            if self.pnl_history.high_water_mark > 0.0 {
+                self.pnl_history.current_drawdown / self.pnl_history.high_water_mark
+            } else {
+                0.0
+            },
+        );
+
         // Risk utilization
-        features.add("loss_utilization", (-total_pnl).max(0.0) / self.risk_limits.max_loss);
-        features.add("daily_loss_utilization", (-self.pnl_history.daily_pnl).max(0.0) / self.risk_limits.daily_max_loss);
-        
+        features.add(
+            "loss_utilization",
+            (-total_pnl).max(0.0) / self.risk_limits.max_loss,
+        );
+        features.add(
+            "daily_loss_utilization",
+            (-self.pnl_history.daily_pnl).max(0.0) / self.risk_limits.daily_max_loss,
+        );
+
         // Trading activity
         features.add("trade_count", self.position.trade_count as f64);
         features.add("total_volume", self.position.total_volume as f64);
-        features.add("avg_trade_size", if self.position.trade_count > 0 {
-            self.position.total_volume as f64 / self.position.trade_count as f64
-        } else {
-            0.0
-        });
-        
+        features.add(
+            "avg_trade_size",
+            if self.position.trade_count > 0 {
+                self.position.total_volume as f64 / self.position.trade_count as f64
+            } else {
+                0.0
+            },
+        );
+
         // Order activity
-        features.add("orders_per_minute", self.order_activity.order_timestamps.len() as f64);
-        features.add("order_rate_utilization", 
-            self.order_activity.order_timestamps.len() as f64 / self.risk_limits.max_orders_per_minute as f64);
-        features.add("market_orders_count", self.order_activity.market_orders as f64);
-        features.add("limit_orders_count", self.order_activity.limit_orders as f64);
-        features.add("cancel_rate", if self.order_activity.orders_sent > 0 {
-            self.order_activity.cancel_count as f64 / self.order_activity.orders_sent as f64
-        } else {
-            0.0
-        });
+        features.add(
+            "orders_per_minute",
+            self.order_activity.order_timestamps.len() as f64,
+        );
+        features.add(
+            "order_rate_utilization",
+            self.order_activity.order_timestamps.len() as f64
+                / self.risk_limits.max_orders_per_minute as f64,
+        );
+        features.add(
+            "market_orders_count",
+            self.order_activity.market_orders as f64,
+        );
+        features.add(
+            "limit_orders_count",
+            self.order_activity.limit_orders as f64,
+        );
+        features.add(
+            "cancel_rate",
+            if self.order_activity.orders_sent > 0 {
+                self.order_activity.cancel_count as f64 / self.order_activity.orders_sent as f64
+            } else {
+                0.0
+            },
+        );
         features.add("fill_rate", self.fill_rate());
-        
+
         // Position timing
         if let Some(hold_time) = self.position_hold_time(timestamp) {
             features.add("position_hold_seconds", hold_time);
             features.add("position_hold_minutes", hold_time / 60.0);
         }
-        
+
         // Streak features
         features.add("consecutive_wins", self.consecutive_wins as f64);
         features.add("consecutive_losses", self.consecutive_losses as f64);
-        features.add("on_winning_streak", if self.consecutive_wins > 0 { 1.0 } else { 0.0 });
-        features.add("on_losing_streak", if self.consecutive_losses > 0 { 1.0 } else { 0.0 });
-        
+        features.add(
+            "on_winning_streak",
+            if self.consecutive_wins > 0 { 1.0 } else { 0.0 },
+        );
+        features.add(
+            "on_losing_streak",
+            if self.consecutive_losses > 0 {
+                1.0
+            } else {
+                0.0
+            },
+        );
+
         // Entry price features
         if self.position.quantity != 0 {
             let price_from_entry = current_price.as_f64() - self.position.avg_price.as_f64();
             features.add("price_from_entry", price_from_entry);
-            features.add("price_from_entry_pct", price_from_entry / self.position.avg_price.as_f64() * 100.0);
+            features.add(
+                "price_from_entry_pct",
+                price_from_entry / self.position.avg_price.as_f64() * 100.0,
+            );
             features.add("entry_price", self.position.avg_price.as_f64());
         }
     }
@@ -410,10 +482,10 @@ mod tests {
     #[test]
     fn test_position_update_new_position() {
         let mut context = ContextFeatures::new(RiskLimits::default());
-        
+
         // Open long position
         context.update_position(Price::from(100i64), 10, 1000);
-        
+
         assert_eq!(context.position.quantity, 10);
         assert_eq!(context.position.avg_price, Price::from(100i64));
         assert_eq!(context.position.trade_count, 1);
@@ -423,13 +495,13 @@ mod tests {
     #[test]
     fn test_position_add_to_position() {
         let mut context = ContextFeatures::new(RiskLimits::default());
-        
+
         // Open position
         context.update_position(Price::from(100i64), 10, 1000);
-        
+
         // Add to position
         context.update_position(Price::from(102i64), 5, 2000);
-        
+
         assert_eq!(context.position.quantity, 15);
         // Average price = (100*10 + 102*5) / 15 = 1510/15 = 100.67
         let expected_avg = Price::from_f64(100.66666666666667);
@@ -439,13 +511,13 @@ mod tests {
     #[test]
     fn test_position_close_with_profit() {
         let mut context = ContextFeatures::new(RiskLimits::default());
-        
+
         // Open long
         context.update_position(Price::from(100i64), 10, 1000);
-        
+
         // Close with profit
         context.update_position(Price::from(105i64), -10, 2000);
-        
+
         assert_eq!(context.position.quantity, 0);
         assert_eq!(context.position.realized_pnl, 50.0); // 10 * (105 - 100)
         assert_eq!(context.consecutive_wins, 1);
@@ -455,13 +527,13 @@ mod tests {
     #[test]
     fn test_position_flip() {
         let mut context = ContextFeatures::new(RiskLimits::default());
-        
+
         // Open long
         context.update_position(Price::from(100i64), 10, 1000);
-        
+
         // Flip to short
         context.update_position(Price::from(102i64), -15, 2000);
-        
+
         assert_eq!(context.position.quantity, -5);
         assert_eq!(context.position.avg_price, Price::from(102i64));
         assert_eq!(context.position.realized_pnl, 20.0); // 10 * (102 - 100)
@@ -470,19 +542,19 @@ mod tests {
     #[test]
     fn test_pnl_tracking() {
         let mut context = ContextFeatures::new(RiskLimits::default());
-        
+
         // Make profitable trade
         context.update_position(Price::from(100i64), 10, 1000);
         context.update_position(Price::from(110i64), -10, 2000);
-        
+
         assert_eq!(context.position.realized_pnl, 100.0);
         assert_eq!(context.pnl_history.high_water_mark, 100.0);
         assert_eq!(context.pnl_history.current_drawdown, 0.0);
-        
+
         // Make losing trade
         context.update_position(Price::from(110i64), 10, 3000);
         context.update_position(Price::from(105i64), -10, 4000);
-        
+
         assert_eq!(context.position.realized_pnl, 50.0); // 100 - 50
         assert_eq!(context.pnl_history.high_water_mark, 100.0);
         assert_eq!(context.pnl_history.current_drawdown, 50.0);
@@ -492,18 +564,18 @@ mod tests {
     #[test]
     fn test_order_activity_tracking() {
         let mut context = ContextFeatures::new(RiskLimits::default());
-        
+
         // Send some orders
-        context.update_order_sent(true, 1_000_000);  // Market
+        context.update_order_sent(true, 1_000_000); // Market
         context.update_order_sent(false, 2_000_000); // Limit
         context.update_order_sent(false, 3_000_000); // Limit
-        
+
         // Fill one
         context.update_order_filled();
-        
+
         // Cancel one
         context.update_order_cancelled();
-        
+
         assert_eq!(context.order_activity.market_orders, 1);
         assert_eq!(context.order_activity.limit_orders, 2);
         assert_eq!(context.order_activity.orders_sent, 3);
@@ -515,16 +587,16 @@ mod tests {
     #[test]
     fn test_feature_vector_integration() {
         let mut context = ContextFeatures::new(RiskLimits::default());
-        
+
         // Set up some state
         context.set_target_position(5);
         context.update_position(Price::from(100i64), 10, 1000);
         context.update_order_sent(false, 1000);
         context.update_order_filled();
-        
+
         let mut features = FeatureVector::new(1, 2000);
         context.add_to_vector(&mut features, Price::from(102i64), 2000);
-        
+
         // Check key features
         assert_eq!(features.get("position_size"), Some(10.0));
         assert_eq!(features.get("is_long"), Some(1.0));

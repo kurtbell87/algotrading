@@ -3,9 +3,9 @@
 //! This module provides comprehensive performance metrics calculation,
 //! trade analytics, and reporting functionality for backtest results.
 
-use crate::core::types::{InstrumentId, Price};
 use crate::backtest::events::FillEvent;
-use crate::backtest::position::{PositionStats, PortfolioStats};
+use crate::backtest::position::{PortfolioStats, PositionStats};
+use crate::core::types::{InstrumentId, Price};
 use crate::strategy::StrategyId;
 use std::collections::{HashMap, VecDeque};
 
@@ -22,10 +22,10 @@ impl TimePeriod {
     /// Convert to annualization factor
     pub fn annualization_factor(&self) -> f64 {
         match self {
-            TimePeriod::Daily => 252.0,      // Trading days per year
-            TimePeriod::Weekly => 52.0,       // Weeks per year
-            TimePeriod::Monthly => 12.0,      // Months per year
-            TimePeriod::Annually => 1.0,      // Already annualized
+            TimePeriod::Daily => 252.0,  // Trading days per year
+            TimePeriod::Weekly => 52.0,  // Weeks per year
+            TimePeriod::Monthly => 12.0, // Months per year
+            TimePeriod::Annually => 1.0, // Already annualized
         }
     }
 }
@@ -64,7 +64,7 @@ impl Trade {
     pub fn duration_us(&self) -> u64 {
         self.exit_time - self.entry_time
     }
-    
+
     /// Calculate trade duration in seconds
     pub fn duration_seconds(&self) -> f64 {
         self.duration_us() as f64 / 1_000_000.0
@@ -111,7 +111,7 @@ struct OpenPosition {
 /// Daily return record
 #[derive(Debug, Clone)]
 struct DailyReturn {
-    date: u64,  // Start of day timestamp
+    date: u64, // Start of day timestamp
     starting_equity: f64,
     ending_equity: f64,
     return_pct: f64,
@@ -147,41 +147,42 @@ impl MetricsCollector {
             next_trade_id: 1,
         }
     }
-    
+
     /// Process a fill event
     pub fn process_fill(&mut self, fill: &FillEvent) {
         let fill_quantity = match fill.side {
             crate::core::Side::Bid => fill.quantity.as_i64(),
             crate::core::Side::Ask => -fill.quantity.as_i64(),
         };
-        
+
         // Check if we need to record a trade
         let mut trade_to_record = None;
         let mut should_update_equity = false;
-        
+
         {
-            let position = self.open_positions.entry(fill.instrument_id).or_insert_with(|| {
-                OpenPosition {
+            let position = self
+                .open_positions
+                .entry(fill.instrument_id)
+                .or_insert_with(|| OpenPosition {
                     strategy_id: fill.strategy_id.clone(),
                     entry_price: fill.price,
                     quantity: 0,
                     entry_time: fill.timestamp,
                     entry_fills: Vec::new(),
-                }
-            });
-            
+                });
+
             let old_quantity = position.quantity;
             let new_quantity = old_quantity + fill_quantity;
-            
+
             // Check if this closes or reduces position
             if (old_quantity > 0 && fill_quantity < 0) || (old_quantity < 0 && fill_quantity > 0) {
                 let closing_quantity = fill_quantity.abs().min(old_quantity.abs());
-                
+
                 if closing_quantity > 0 {
                     // Calculate P&L for closed portion
                     let avg_entry_price = position.entry_price.as_f64();
                     let exit_price = fill.price.as_f64();
-                    
+
                     let pnl = if old_quantity > 0 {
                         // Closing long
                         (exit_price - avg_entry_price) * closing_quantity as f64
@@ -189,10 +190,10 @@ impl MetricsCollector {
                         // Closing short
                         (avg_entry_price - exit_price) * closing_quantity as f64
                     };
-                    
+
                     let pnl_after_commission = pnl - fill.commission;
                     let return_pct = (pnl / (avg_entry_price * closing_quantity as f64)) * 100.0;
-                    
+
                     // Record completed trade
                     trade_to_record = Some(Trade {
                         id: self.next_trade_id,
@@ -208,37 +209,40 @@ impl MetricsCollector {
                         commission: fill.commission,
                         is_winner: pnl_after_commission > 0.0,
                     });
-                    
+
                     self.current_equity += pnl_after_commission;
                     should_update_equity = true;
                 }
             }
-            
+
             // Update position
             position.quantity = new_quantity;
             position.entry_fills.push(fill.clone());
             let _position_flat = new_quantity == 0;
         }
-        
+
         // Process trade outside of position borrow
         if let Some(trade) = trade_to_record {
             self.next_trade_id += 1;
             self.trades.push(trade);
         }
-        
+
         if should_update_equity {
             self.update_equity_curve(fill.timestamp);
         }
-        
+
         // Remove if flat
         // Check if position is flat and remove it
-        if self.open_positions.get(&fill.instrument_id)
+        if self
+            .open_positions
+            .get(&fill.instrument_id)
             .map(|p| p.quantity == 0)
-            .unwrap_or(false) {
+            .unwrap_or(false)
+        {
             self.open_positions.remove(&fill.instrument_id);
         }
     }
-    
+
     /// Update equity curve and drawdown
     fn update_equity_curve(&mut self, timestamp: u64) {
         // Update high water mark
@@ -246,12 +250,13 @@ impl MetricsCollector {
             self.high_water_mark = self.current_equity;
             self.current_drawdown = 0.0;
         } else {
-            self.current_drawdown = (self.high_water_mark - self.current_equity) / self.high_water_mark;
+            self.current_drawdown =
+                (self.high_water_mark - self.current_equity) / self.high_water_mark;
             if self.current_drawdown > self.max_drawdown {
                 self.max_drawdown = self.current_drawdown;
             }
         }
-        
+
         // Add to equity curve
         self.equity_curve.push(EquityPoint {
             timestamp,
@@ -259,21 +264,25 @@ impl MetricsCollector {
             drawdown: self.current_drawdown,
         });
     }
-    
+
     /// Reset daily tracking
     pub fn reset_daily(&mut self, timestamp: u64) {
-        let starting_equity = self.equity_curve.last()
+        let starting_equity = self
+            .equity_curve
+            .last()
             .map(|p| p.equity)
             .unwrap_or(self.starting_capital);
-        
+
         let ending_equity = self.current_equity;
         let return_pct = ((ending_equity - starting_equity) / starting_equity) * 100.0;
-        
+
         // Count trades for this day
-        let trades_count = self.trades.iter()
+        let trades_count = self
+            .trades
+            .iter()
             .filter(|t| t.exit_time >= self.last_daily_reset && t.exit_time < timestamp)
             .count();
-        
+
         self.daily_returns.push_back(DailyReturn {
             date: self.last_daily_reset,
             starting_equity,
@@ -281,77 +290,79 @@ impl MetricsCollector {
             return_pct,
             trades_count,
         });
-        
+
         // Keep only last year of daily returns
         while self.daily_returns.len() > 365 {
             self.daily_returns.pop_front();
         }
-        
+
         self.last_daily_reset = timestamp;
     }
-    
+
     /// Calculate performance metrics
     pub fn calculate_metrics(&self) -> PerformanceMetrics {
         let total_trades = self.trades.len();
         if total_trades == 0 {
             return PerformanceMetrics::default();
         }
-        
+
         // Basic statistics
         let winning_trades = self.trades.iter().filter(|t| t.is_winner).count();
         let losing_trades = total_trades - winning_trades;
         let win_rate = (winning_trades as f64 / total_trades as f64) * 100.0;
-        
+
         // P&L statistics
-        let gross_profit: f64 = self.trades.iter()
+        let gross_profit: f64 = self
+            .trades
+            .iter()
             .filter(|t| t.is_winner)
             .map(|t| t.pnl)
             .sum();
-        
-        let gross_loss: f64 = self.trades.iter()
+
+        let gross_loss: f64 = self
+            .trades
+            .iter()
             .filter(|t| !t.is_winner)
             .map(|t| t.pnl.abs())
             .sum();
-        
+
         let total_pnl = self.current_equity - self.starting_capital;
         let total_return = (total_pnl / self.starting_capital) * 100.0;
-        
+
         let profit_factor = if gross_loss > 0.0 {
             gross_profit / gross_loss
         } else {
             f64::INFINITY
         };
-        
+
         // Average trade statistics
         let avg_win = if winning_trades > 0 {
             gross_profit / winning_trades as f64
         } else {
             0.0
         };
-        
+
         let avg_loss = if losing_trades > 0 {
             gross_loss / losing_trades as f64
         } else {
             0.0
         };
-        
+
         let avg_trade = total_pnl / total_trades as f64;
-        
+
         // Risk-adjusted returns
         let sharpe = self.calculate_sharpe_ratio();
         let sortino = self.calculate_sortino_ratio();
         let calmar = self.calculate_calmar_ratio();
-        
+
         // Trade duration
         let avg_trade_duration = if total_trades > 0 {
-            let total_duration: u64 = self.trades.iter()
-                .map(|t| t.duration_us())
-                .sum();
+            let total_duration: u64 = self.trades.iter().map(|t| t.duration_us()).sum();
             (total_duration / total_trades as u64) as f64 / 1_000_000.0
         } else {
             0.0
         };
-        
+
         PerformanceMetrics {
             total_trades,
             winning_trades,
@@ -372,24 +383,28 @@ impl MetricsCollector {
             avg_trade_duration_seconds: avg_trade_duration,
         }
     }
-    
+
     /// Calculate Sharpe ratio
     fn calculate_sharpe_ratio(&self) -> f64 {
         if self.daily_returns.len() < 2 {
             return 0.0;
         }
-        
-        let returns: Vec<f64> = self.daily_returns.iter()
+
+        let returns: Vec<f64> = self
+            .daily_returns
+            .iter()
             .map(|r| r.return_pct / 100.0)
             .collect();
-        
+
         let mean_return = returns.iter().sum::<f64>() / returns.len() as f64;
-        let variance = returns.iter()
+        let variance = returns
+            .iter()
             .map(|r| (r - mean_return).powi(2))
-            .sum::<f64>() / returns.len() as f64;
-        
+            .sum::<f64>()
+            / returns.len() as f64;
+
         let std_dev = variance.sqrt();
-        
+
         if std_dev > 0.0 {
             // Annualized Sharpe ratio (assuming daily returns)
             mean_return * 252.0_f64.sqrt() / std_dev
@@ -397,35 +412,33 @@ impl MetricsCollector {
             0.0
         }
     }
-    
+
     /// Calculate Sortino ratio (downside deviation)
     fn calculate_sortino_ratio(&self) -> f64 {
         if self.daily_returns.len() < 2 {
             return 0.0;
         }
-        
-        let returns: Vec<f64> = self.daily_returns.iter()
+
+        let returns: Vec<f64> = self
+            .daily_returns
+            .iter()
             .map(|r| r.return_pct / 100.0)
             .collect();
-        
+
         let mean_return = returns.iter().sum::<f64>() / returns.len() as f64;
-        
+
         // Calculate downside deviation
-        let negative_returns: Vec<f64> = returns.iter()
-            .filter(|&&r| r < 0.0)
-            .copied()
-            .collect();
-        
+        let negative_returns: Vec<f64> = returns.iter().filter(|&&r| r < 0.0).copied().collect();
+
         if negative_returns.is_empty() {
             return f64::INFINITY;
         }
-        
-        let downside_variance = negative_returns.iter()
-            .map(|r| r.powi(2))
-            .sum::<f64>() / returns.len() as f64;
-        
+
+        let downside_variance =
+            negative_returns.iter().map(|r| r.powi(2)).sum::<f64>() / returns.len() as f64;
+
         let downside_dev = downside_variance.sqrt();
-        
+
         if downside_dev > 0.0 {
             // Annualized Sortino ratio
             mean_return * 252.0_f64.sqrt() / downside_dev
@@ -433,7 +446,7 @@ impl MetricsCollector {
             0.0
         }
     }
-    
+
     /// Calculate Calmar ratio (return / max drawdown)
     fn calculate_calmar_ratio(&self) -> f64 {
         if self.max_drawdown > 0.0 {
@@ -443,36 +456,37 @@ impl MetricsCollector {
             f64::INFINITY
         }
     }
-    
+
     /// Calculate annualized return
     fn calculate_annualized_return(&self) -> f64 {
         if self.equity_curve.len() < 2 {
             return 0.0;
         }
-        
+
         let first = &self.equity_curve[0];
         let last = &self.equity_curve[self.equity_curve.len() - 1];
-        
+
         let total_return = (last.equity - first.equity) / first.equity;
-        let duration_years = (last.timestamp - first.timestamp) as f64 / (365.25 * 24.0 * 60.0 * 60.0 * 1_000_000.0);
-        
+        let duration_years =
+            (last.timestamp - first.timestamp) as f64 / (365.25 * 24.0 * 60.0 * 60.0 * 1_000_000.0);
+
         if duration_years > 0.0 {
             ((1.0 + total_return).powf(1.0 / duration_years) - 1.0) * 100.0
         } else {
             0.0
         }
     }
-    
+
     /// Get trade history
     pub fn get_trades(&self) -> &[Trade] {
         &self.trades
     }
-    
+
     /// Get equity curve
     pub fn get_equity_curve(&self) -> &[EquityPoint] {
         &self.equity_curve
     }
-    
+
     /// Get current statistics
     pub fn get_current_stats(&self) -> CurrentStats {
         CurrentStats {
@@ -612,9 +626,9 @@ Total Commission: ${:.2}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::Quantity;
     use crate::core::Side;
-    
+    use crate::core::types::Quantity;
+
     #[test]
     fn test_metrics_collector_creation() {
         let collector = MetricsCollector::new(10000.0);
@@ -622,11 +636,11 @@ mod tests {
         assert_eq!(collector.trades.len(), 0);
         assert_eq!(collector.max_drawdown, 0.0);
     }
-    
+
     #[test]
     fn test_trade_processing() {
         let mut collector = MetricsCollector::new(10000.0);
-        
+
         // Open long position
         let buy_fill = FillEvent {
             fill_id: 1,
@@ -640,10 +654,10 @@ mod tests {
             commission: 5.0,
             is_maker: false,
         };
-        
+
         collector.process_fill(&buy_fill);
         assert_eq!(collector.open_positions.len(), 1);
-        
+
         // Close position with profit
         let sell_fill = FillEvent {
             fill_id: 2,
@@ -657,20 +671,20 @@ mod tests {
             commission: 5.0,
             is_maker: false,
         };
-        
+
         collector.process_fill(&sell_fill);
         assert_eq!(collector.trades.len(), 1);
         assert_eq!(collector.open_positions.len(), 0);
-        
+
         let trade = &collector.trades[0];
         assert!(trade.is_winner);
         assert_eq!(trade.pnl, 95.0); // (110-100)*10 - 5 = 95 (only exit commission counted)
     }
-    
+
     #[test]
     fn test_performance_metrics() {
         let mut collector = MetricsCollector::new(10000.0);
-        
+
         // Add some winning trades
         for i in 0..5 {
             // Buy
@@ -687,7 +701,7 @@ mod tests {
                 is_maker: false,
             };
             collector.process_fill(&buy_fill);
-            
+
             // Sell with profit
             let sell_fill = FillEvent {
                 fill_id: i * 2 + 2,
@@ -703,37 +717,37 @@ mod tests {
             };
             collector.process_fill(&sell_fill);
         }
-        
+
         let metrics = collector.calculate_metrics();
         assert_eq!(metrics.total_trades, 5);
         assert_eq!(metrics.winning_trades, 5);
         assert_eq!(metrics.win_rate, 100.0);
         assert!(metrics.profit_factor.is_infinite());
     }
-    
+
     #[test]
     fn test_drawdown_calculation() {
         let mut collector = MetricsCollector::new(10000.0);
-        
+
         // Profitable trade
         collector.current_equity = 11000.0;
         collector.update_equity_curve(1000);
         assert_eq!(collector.high_water_mark, 11000.0);
         assert_eq!(collector.current_drawdown, 0.0);
-        
+
         // Losing trade
         collector.current_equity = 10500.0;
         collector.update_equity_curve(2000);
         assert_eq!(collector.high_water_mark, 11000.0);
         assert!((collector.current_drawdown - 0.0454545).abs() < 0.0001); // 500/11000
-        
+
         // Another losing trade
         collector.current_equity = 10000.0;
         collector.update_equity_curve(3000);
         assert!((collector.current_drawdown - 0.0909090).abs() < 0.0001); // 1000/11000
         assert_eq!(collector.max_drawdown, collector.current_drawdown);
     }
-    
+
     #[test]
     fn test_time_period_annualization() {
         assert_eq!(TimePeriod::Daily.annualization_factor(), 252.0);

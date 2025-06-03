@@ -2,14 +2,14 @@
 //!
 //! Stripped down version with minimal features for maximum performance
 
-use crate::core::types::InstrumentId;
-use crate::core::traits::MarketDataSource;
-use crate::core::MarketUpdate;
-use crate::strategy::{Strategy, StrategyContext};
-use crate::features::{FeaturePosition, RiskLimits};
-use crate::market_data::events::{MarketEvent, TradeEvent};
-use crate::market_data::FileReader;
 use crate::backtest::{BacktestConfig, PerformanceMetrics};
+use crate::core::MarketUpdate;
+use crate::core::traits::MarketDataSource;
+use crate::core::types::InstrumentId;
+use crate::features::{FeaturePosition, RiskLimits};
+use crate::market_data::FileReader;
+use crate::market_data::events::{MarketEvent, TradeEvent};
+use crate::strategy::{Strategy, StrategyContext};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -39,7 +39,7 @@ impl UltraFastEngine {
             event_buffer: Vec::with_capacity(BATCH_SIZE),
         }
     }
-    
+
     /// Add strategy
     pub fn add_strategy(&mut self, mut strategy: Box<dyn Strategy>) -> Result<(), String> {
         let context = StrategyContext::new(
@@ -49,42 +49,46 @@ impl UltraFastEngine {
             RiskLimits::default(),
             true,
         );
-        
+
         strategy.initialize(&context)?;
         self.strategies.push((strategy, context));
         Ok(())
     }
-    
+
     /// Run ultra-fast backtest
     pub fn run<P: AsRef<Path>>(&mut self, data_files: &[P]) -> Result<UltraFastReport, String> {
         self.start_time = Instant::now();
         println!("\n=== Ultra-Fast Engine Starting ===");
-        
+
         for (i, file) in data_files.iter().enumerate() {
-            println!("File {}/{}: {:?}", i + 1, data_files.len(), 
-                    file.as_ref().file_name().unwrap_or_default());
+            println!(
+                "File {}/{}: {:?}",
+                i + 1,
+                data_files.len(),
+                file.as_ref().file_name().unwrap_or_default()
+            );
             self.process_file_ultra_fast(file)?;
         }
-        
+
         let elapsed = self.start_time.elapsed();
         let throughput = self.events_processed as f64 / elapsed.as_secs_f64();
-        
+
         Ok(UltraFastReport {
             events_processed: self.events_processed,
             elapsed_seconds: elapsed.as_secs_f64(),
             throughput,
         })
     }
-    
+
     /// Process file with maximum performance
     fn process_file_ultra_fast<P: AsRef<Path>>(&mut self, file_path: P) -> Result<(), String> {
         let paths = vec![PathBuf::from(file_path.as_ref())];
-        let mut reader = FileReader::new(paths)
-            .map_err(|e| format!("Failed to open file: {}", e))?;
-        
+        let mut reader =
+            FileReader::new(paths).map_err(|e| format!("Failed to open file: {}", e))?;
+
         let file_start = Instant::now();
         let mut file_events = 0;
-        
+
         loop {
             // Fill batch
             self.batch_buffer.clear();
@@ -95,14 +99,14 @@ impl UltraFastEngine {
                     break;
                 }
             }
-            
+
             if self.batch_buffer.is_empty() {
                 break;
             }
-            
+
             // Process batch inline (no function calls)
             self.event_buffer.clear();
-            
+
             // Convert to events
             for update in &self.batch_buffer {
                 let event = match update {
@@ -126,7 +130,7 @@ impl UltraFastEngine {
                 };
                 self.event_buffer.push(event);
             }
-            
+
             // Process through strategies (simplified)
             for event in &self.event_buffer {
                 for (strategy, context) in &mut self.strategies {
@@ -135,20 +139,23 @@ impl UltraFastEngine {
                     // Don't process orders for pure speed test
                 }
             }
-            
+
             file_events += self.batch_buffer.len();
             self.events_processed += self.batch_buffer.len();
-            
+
             // Progress report
             if self.events_processed % REPORT_INTERVAL == 0 {
                 let elapsed = file_start.elapsed();
                 let rate = file_events as f64 / elapsed.as_secs_f64();
-                let total_rate = self.events_processed as f64 / self.start_time.elapsed().as_secs_f64();
-                println!("  {} events | Current: {:.0}/s | Average: {:.0}/s", 
-                        self.events_processed, rate, total_rate);
+                let total_rate =
+                    self.events_processed as f64 / self.start_time.elapsed().as_secs_f64();
+                println!(
+                    "  {} events | Current: {:.0}/s | Average: {:.0}/s",
+                    self.events_processed, rate, total_rate
+                );
             }
         }
-        
+
         Ok(())
     }
 }
@@ -167,10 +174,10 @@ impl UltraFastReport {
         println!("Events: {}", self.events_processed);
         println!("Time: {:.2}s", self.elapsed_seconds);
         println!("Throughput: {:.0} events/s", self.throughput);
-        
+
         let efficiency = (self.throughput / 18_000_000.0) * 100.0;
         println!("Efficiency: {:.1}% of 18M target", efficiency);
-        
+
         if self.throughput >= 15_000_000.0 {
             println!("\n🎯 SUCCESS: Achieved target!");
         } else if self.throughput >= 10_000_000.0 {

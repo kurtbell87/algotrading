@@ -1,16 +1,11 @@
 use crate::core::{MarketDataSource, MarketUpdate, Result};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use databento::dbn::{
     decode::{DbnDecoder, DecodeRecord},
     record::MboMsg,
 };
 use memmap2::Mmap;
-use std::{
-    fs::File,
-    io::BufReader,
-    path::PathBuf,
-    thread,
-};
+use std::{fs::File, io::BufReader, path::PathBuf, thread};
 
 const BATCH_SIZE: usize = 4 * 1024;
 
@@ -26,7 +21,7 @@ impl FileReader {
     /// Create a new file reader for the given paths
     pub fn new(paths: Vec<PathBuf>) -> Result<Self> {
         let (tx, rx) = bounded(10); // Buffer up to 10 batches
-        
+
         let handle = thread::spawn(move || {
             Self::producer_thread(paths, tx);
         });
@@ -53,7 +48,7 @@ impl FileReader {
         if !batch.is_empty() {
             tx.send(Some(batch)).ok();
         }
-        
+
         // Signal end of stream
         tx.send(None).ok();
     }
@@ -72,7 +67,10 @@ impl FileReader {
         while let Some(rec) = decoder.decode_record::<MboMsg>()? {
             batch.push(rec.clone());
             if batch.len() == BATCH_SIZE {
-                tx.send(Some(std::mem::replace(batch, Vec::with_capacity(BATCH_SIZE))))?;
+                tx.send(Some(std::mem::replace(
+                    batch,
+                    Vec::with_capacity(BATCH_SIZE),
+                )))?;
             }
         }
 

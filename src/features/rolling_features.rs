@@ -183,9 +183,9 @@ impl RollingWindow {
         let decay_factor = 0.5_f64.powf(1.0 / half_life_events as f64);
         let mut weighted_value = 0.0;
         let mut total_weight = 0.0;
-        
+
         let current_event = self.event_counter;
-        
+
         for point in &self.points {
             if let Some(volume) = point.volume {
                 let events_ago = (current_event - point.event_number) as f64;
@@ -236,10 +236,9 @@ impl RollingWindow {
 
                 // Calculate standard deviation
                 let mean = returns.iter().sum::<f64>() / returns.len() as f64;
-                let variance = returns.iter()
-                    .map(|&r| (r - mean).powi(2))
-                    .sum::<f64>() / returns.len() as f64;
-                
+                let variance =
+                    returns.iter().map(|&r| (r - mean).powi(2)).sum::<f64>() / returns.len() as f64;
+
                 let volatility = variance.sqrt();
                 self.cached_volatility = Some(volatility);
                 Some(volatility)
@@ -255,11 +254,11 @@ impl RollingWindow {
 
         let decay_factor = 0.5_f64.powf(1.0 / half_life_events as f64);
         let current_event = self.event_counter;
-        
+
         // First pass: calculate weighted mean return
         let mut weighted_sum = 0.0;
         let mut total_weight = 0.0;
-        
+
         for i in 1..self.points.len() {
             let prev_price = self.points[i - 1].price.as_f64();
             let curr_price = self.points[i].price.as_f64();
@@ -271,17 +270,17 @@ impl RollingWindow {
                 total_weight += weight;
             }
         }
-        
+
         if total_weight == 0.0 {
             return None;
         }
-        
+
         let weighted_mean = weighted_sum / total_weight;
-        
+
         // Second pass: calculate weighted variance
         let mut weighted_var = 0.0;
         total_weight = 0.0;
-        
+
         for i in 1..self.points.len() {
             let prev_price = self.points[i - 1].price.as_f64();
             let curr_price = self.points[i].price.as_f64();
@@ -293,7 +292,7 @@ impl RollingWindow {
                 total_weight += weight;
             }
         }
-        
+
         let volatility = (weighted_var / total_weight).sqrt();
         self.cached_volatility = Some(volatility);
         Some(volatility)
@@ -306,20 +305,20 @@ impl RollingWindow {
                 if self.points.is_empty() {
                     return None;
                 }
-                
+
                 let decay_factor = 0.5_f64.powf(1.0 / *half_life_events as f64);
                 let current_event = self.event_counter;
-                
+
                 let mut weighted_sum = 0.0;
                 let mut total_weight = 0.0;
-                
+
                 for point in &self.points {
                     let events_ago = (current_event - point.event_number) as f64;
                     let weight = decay_factor.powf(events_ago);
                     weighted_sum += point.price.as_f64() * weight;
                     total_weight += weight;
                 }
-                
+
                 if total_weight > 0.0 {
                     Some(weighted_sum / total_weight)
                 } else {
@@ -339,23 +338,23 @@ impl RollingWindow {
             return None;
         }
 
-        let sum: f64 = self.points.iter()
-            .map(|p| p.price.as_f64())
-            .sum();
-        
+        let sum: f64 = self.points.iter().map(|p| p.price.as_f64()).sum();
+
         Some(sum / self.points.len() as f64)
     }
 
     /// Get minimum price in window
     pub fn min(&self) -> Option<f64> {
-        self.points.iter()
+        self.points
+            .iter()
             .map(|p| p.price.as_f64())
             .min_by(|a, b| a.partial_cmp(b).unwrap())
     }
 
     /// Get maximum price in window
     pub fn max(&self) -> Option<f64> {
-        self.points.iter()
+        self.points
+            .iter()
             .map(|p| p.price.as_f64())
             .max_by(|a, b| a.partial_cmp(b).unwrap())
     }
@@ -368,7 +367,7 @@ impl RollingWindow {
 
         let first = self.points.front()?.price.as_f64();
         let last = self.points.back()?.price.as_f64();
-        
+
         Some(last - first)
     }
 
@@ -380,7 +379,7 @@ impl RollingWindow {
 
         let first = self.points.front()?.price.as_f64();
         let last = self.points.back()?.price.as_f64();
-        
+
         if first > 0.0 {
             Some((last - first) / first * 100.0)
         } else {
@@ -420,7 +419,7 @@ impl RollingFeatures {
             trade_count: 0,
         }
     }
-    
+
     /// Create with custom window configurations
     pub fn with_windows(
         short_events: usize,
@@ -451,12 +450,16 @@ impl RollingFeatures {
 
     /// Update with trade data (price and volume)
     pub fn update_trade(&mut self, price: Price, quantity: Quantity, timestamp: u64) {
-        self.short_window.add_point(timestamp, price, Some(quantity));
-        self.medium_window.add_point(timestamp, price, Some(quantity));
+        self.short_window
+            .add_point(timestamp, price, Some(quantity));
+        self.medium_window
+            .add_point(timestamp, price, Some(quantity));
         self.long_window.add_point(timestamp, price, Some(quantity));
-        self.volume_window.add_point(timestamp, price, Some(quantity));
-        self.trade_window.add_point(timestamp, price, Some(quantity));
-        
+        self.volume_window
+            .add_point(timestamp, price, Some(quantity));
+        self.trade_window
+            .add_point(timestamp, price, Some(quantity));
+
         self.volume_accumulator += quantity.as_f64();
         self.trade_count += 1;
     }
@@ -529,23 +532,32 @@ impl RollingFeatures {
         features.add("volume_accumulated", self.volume_accumulator);
         features.add("trade_count_total", self.trade_count as f64);
         if self.trade_count > 0 {
-            features.add("avg_trade_size", self.volume_accumulator / self.trade_count as f64);
+            features.add(
+                "avg_trade_size",
+                self.volume_accumulator / self.trade_count as f64,
+            );
         }
 
         // Cross-window features (comparing different event horizons)
-        if let (Some(sma_short), Some(sma_long)) = (self.short_window.sma(), self.long_window.sma()) {
+        if let (Some(sma_short), Some(sma_long)) = (self.short_window.sma(), self.long_window.sma())
+        {
             features.add("sma_ratio_short_long_events", sma_short / sma_long);
             features.add("sma_diff_short_long_events", sma_short - sma_long);
         }
 
-        if let (Some(vol_short), Some(vol_long)) = (self.short_window.volatility(), self.long_window.volatility()) {
+        if let (Some(vol_short), Some(vol_long)) = (
+            self.short_window.volatility(),
+            self.long_window.volatility(),
+        ) {
             if vol_long > 0.0 {
                 features.add("volatility_ratio_short_long_events", vol_short / vol_long);
             }
         }
 
         // Volume vs event-based window comparison
-        if let (Some(vwap_events), Some(vwap_volume)) = (self.short_window.vwap(), self.volume_window.vwap()) {
+        if let (Some(vwap_events), Some(vwap_volume)) =
+            (self.short_window.vwap(), self.volume_window.vwap())
+        {
             features.add("vwap_events_vs_volume_ratio", vwap_events / vwap_volume);
         }
     }
@@ -558,12 +570,12 @@ mod tests {
     #[test]
     fn test_event_based_vwap() {
         let mut window = RollingWindow::new(WindowType::EventCount(5));
-        
+
         // Add trades with volume
         window.add_point(1000, Price::from(100i64), Some(Quantity::from(10u32)));
         window.add_point(2000, Price::from(102i64), Some(Quantity::from(20u32)));
         window.add_point(3000, Price::from(101i64), Some(Quantity::from(30u32)));
-        
+
         // VWAP = (100*10 + 102*20 + 101*30) / (10+20+30)
         //      = (1000 + 2040 + 3030) / 60
         //      = 6070 / 60 = 101.167
@@ -574,15 +586,15 @@ mod tests {
     #[test]
     fn test_volume_based_window() {
         let mut window = RollingWindow::new(WindowType::VolumeCount(50));
-        
+
         // Add trades totaling exactly 50 contracts
         window.add_point(1000, Price::from(100i64), Some(Quantity::from(20u32)));
         window.add_point(2000, Price::from(102i64), Some(Quantity::from(20u32)));
         window.add_point(3000, Price::from(104i64), Some(Quantity::from(10u32)));
-        
+
         // Add one more trade that should push out the first
         window.add_point(4000, Price::from(106i64), Some(Quantity::from(40u32)));
-        
+
         // Window should only contain last 50 contracts
         assert_eq!(window.total_volume, 50.0); // 10 + 40 = 50 (first two trades removed)
         assert_eq!(window.trade_count, 2); // First two trades removed
@@ -591,26 +603,28 @@ mod tests {
     #[test]
     fn test_event_volatility() {
         let mut window = RollingWindow::new(WindowType::EventCount(4));
-        
+
         // Add prices with event-to-event changes
         window.add_point(0, Price::from(100i64), None);
         window.add_point(1000, Price::from(102i64), None);
         window.add_point(2000, Price::from(98i64), None);
         window.add_point(3000, Price::from(101i64), None);
-        
+
         let vol = window.volatility().unwrap();
         assert!(vol > 0.0); // Should have positive volatility
     }
 
     #[test]
     fn test_exponential_decay_window() {
-        let mut window = RollingWindow::new(WindowType::ExponentialDecay { half_life_events: 2 });
-        
+        let mut window = RollingWindow::new(WindowType::ExponentialDecay {
+            half_life_events: 2,
+        });
+
         // Add several events
         for i in 0..5 {
             window.add_point(i * 1000, Price::from((100 + i) as i64), None);
         }
-        
+
         // Recent events should have more weight in EMA
         let ema = window.ema().unwrap();
         assert!(ema > 102.0); // Should be weighted toward recent higher prices
@@ -619,14 +633,14 @@ mod tests {
     #[test]
     fn test_event_window_trimming() {
         let mut window = RollingWindow::new(WindowType::EventCount(3));
-        
+
         // Add more events than window size
         window.add_point(0, Price::from(100i64), None);
         window.add_point(1000, Price::from(101i64), None);
         window.add_point(2000, Price::from(102i64), None);
         window.add_point(3000, Price::from(103i64), None);
         window.add_point(4000, Price::from(104i64), None);
-        
+
         // Should only keep last 3 events
         assert_eq!(window.points.len(), 3);
         assert_eq!(window.sma().unwrap(), 103.0); // (102 + 103 + 104) / 3
@@ -635,16 +649,16 @@ mod tests {
     #[test]
     fn test_trade_count_window() {
         let mut window = RollingWindow::new(WindowType::TradeCount(2));
-        
+
         // Add price updates without trades
         window.add_point(0, Price::from(100i64), None);
         window.add_point(1000, Price::from(101i64), None);
-        
+
         // Add trades
         window.add_point(2000, Price::from(102i64), Some(Quantity::from(10u32)));
         window.add_point(3000, Price::from(103i64), Some(Quantity::from(20u32)));
         window.add_point(4000, Price::from(104i64), Some(Quantity::from(30u32)));
-        
+
         // Should only keep last 2 trades
         assert_eq!(window.trade_count, 2);
         assert_eq!(window.total_volume, 50.0); // 20 + 30
