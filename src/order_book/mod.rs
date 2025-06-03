@@ -1,6 +1,6 @@
 pub mod book;
-pub mod market;
 pub mod events;
+pub mod market;
 
 pub use book::Book;
 pub use market::Market;

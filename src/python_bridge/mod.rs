@@ -5,10 +5,10 @@
 //! - Writing strategies in Python that integrate with the Rust engine
 //! - Efficient data marshaling between Rust and Python
 
-pub mod types;
 pub mod models;
 pub mod strategy;
+pub mod types;
 
-pub use types::*;
 pub use models::*;
 pub use strategy::*;
+pub use types::*;

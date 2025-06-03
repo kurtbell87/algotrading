@@ -3,9 +3,9 @@
 //! This module provides batch processing utilities that can be used
 //! with the existing BacktestEngine to improve performance.
 
+use crate::backtest::market_state::MarketStateManager;
 use crate::core::MarketUpdate;
 use crate::market_data::events::MarketEvent;
-use crate::backtest::market_state::MarketStateManager;
 use std::sync::{Arc, RwLock};
 
 /// Batch processor for market updates
@@ -22,28 +22,28 @@ impl BatchProcessor {
             buffer: Vec::with_capacity(batch_size * 2),
         }
     }
-    
+
     /// Add update to batch
     pub fn add(&mut self, update: MarketUpdate) {
         self.buffer.push(update);
     }
-    
+
     /// Check if batch is full
     pub fn is_full(&self) -> bool {
         self.buffer.len() >= self.batch_size
     }
-    
+
     /// Process batch with callback
-    pub fn process_batch<F>(&mut self, mut callback: F) 
+    pub fn process_batch<F>(&mut self, mut callback: F)
     where
-        F: FnMut(&[MarketUpdate])
+        F: FnMut(&[MarketUpdate]),
     {
         if !self.buffer.is_empty() {
             callback(&self.buffer);
             self.buffer.clear();
         }
     }
-    
+
     /// Get current batch size
     pub fn len(&self) -> usize {
         self.buffer.len()
@@ -59,11 +59,11 @@ impl BatchMarketUpdater {
     pub fn new(market_state: Arc<RwLock<MarketStateManager>>) -> Self {
         Self { market_state }
     }
-    
+
     /// Update market state for entire batch (single lock acquisition)
     pub fn update_batch(&self, updates: &[MarketUpdate]) {
         let mut state = self.market_state.write().unwrap();
-        
+
         for update in updates {
             // Direct update without intermediate conversion
             match update {
@@ -97,31 +97,33 @@ impl PerformanceMonitor {
             report_interval,
         }
     }
-    
+
     /// Update event count
     pub fn add_events(&mut self, count: usize) {
         self.events_processed += count;
-        
+
         if self.events_processed % self.report_interval == 0 {
             self.print_progress();
         }
     }
-    
+
     /// Print progress report
     pub fn print_progress(&mut self) {
         let now = std::time::Instant::now();
         let interval_elapsed = now.duration_since(self.last_report_time);
         let total_elapsed = now.duration_since(self.start_time);
-        
+
         let interval_rate = self.report_interval as f64 / interval_elapsed.as_secs_f64();
         let total_rate = self.events_processed as f64 / total_elapsed.as_secs_f64();
-        
-        println!("Processed {} events | Current: {:.0} events/s | Average: {:.0} events/s",
-                self.events_processed, interval_rate, total_rate);
-        
+
+        println!(
+            "Processed {} events | Current: {:.0} events/s | Average: {:.0} events/s",
+            self.events_processed, interval_rate, total_rate
+        );
+
         self.last_report_time = now;
     }
-    
+
     /// Get final statistics
     pub fn get_stats(&self) -> (usize, f64) {
         let elapsed = self.start_time.elapsed();
@@ -154,13 +156,13 @@ impl Default for BatchConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_batch_processor() {
         let mut processor = BatchProcessor::new(3);
-        
+
         assert!(!processor.is_full());
-        
+
         // Add updates
         for i in 0..3 {
             processor.add(MarketUpdate::Trade(crate::core::Trade {
@@ -171,17 +173,17 @@ mod tests {
                 timestamp: i as u64,
             }));
         }
-        
+
         assert!(processor.is_full());
         assert_eq!(processor.len(), 3);
-        
+
         // Process batch
         let mut processed = false;
         processor.process_batch(|batch| {
             assert_eq!(batch.len(), 3);
             processed = true;
         });
-        
+
         assert!(processed);
         assert_eq!(processor.len(), 0);
     }

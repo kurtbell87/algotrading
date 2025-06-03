@@ -1,11 +1,11 @@
-use crate::core::{Price, PriceLevel, Quantity, OrderBook, BookDepth};
+use crate::core::{BookDepth, OrderBook, Price, PriceLevel, Quantity};
 use databento::dbn::{
+    UNDEF_PRICE,
     enums::{Action, Side},
     record::MboMsg,
-    UNDEF_PRICE,
 };
 use hashbrown::HashMap;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 use std::collections::BTreeMap;
 
 // Fast container aliases
@@ -41,11 +41,19 @@ impl Book {
     pub fn bbo(&self) -> (Option<LevelSummary>, Option<LevelSummary>) {
         let bid = self.bids.iter().rev().next().map(|(px, l)| {
             let (sz, ct) = aggregate_level(l);
-            LevelSummary { price: *px, size: sz, count: ct }
+            LevelSummary {
+                price: *px,
+                size: sz,
+                count: ct,
+            }
         });
         let ask = self.asks.iter().next().map(|(px, l)| {
             let (sz, ct) = aggregate_level(l);
-            LevelSummary { price: *px, size: sz, count: ct }
+            LevelSummary {
+                price: *px,
+                size: sz,
+                count: ct,
+            }
         });
         (bid, ask)
     }

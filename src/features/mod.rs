@@ -11,18 +11,22 @@ pub mod rolling_features;
 pub mod time_features;
 pub mod transformations;
 
-use crate::core::types::{InstrumentId, Price};
 use crate::core::Side;
+use crate::core::types::{InstrumentId, Price};
 use crate::order_book::events::OrderBookEvent;
 use std::collections::HashMap;
 
-pub use book_features::{BookFeatures, BookImbalance, SpreadMetrics, BookPressure, QueueMetrics};
-pub use collector::{FeatureCollector, FeatureVector, FeatureBuffer, Feature};
+pub use book_features::{BookFeatures, BookImbalance, BookPressure, QueueMetrics, SpreadMetrics};
+pub use collector::{Feature, FeatureBuffer, FeatureCollector, FeatureVector};
 pub use context_features::{ContextFeatures, Position as FeaturePosition, RiskLimits};
-pub use flow_features::{FlowFeatures, TradeFlowMetrics, AggressivePassiveMetrics, ArrivalRateMetrics, TradeSizeMetrics};
+pub use flow_features::{
+    AggressivePassiveMetrics, ArrivalRateMetrics, FlowFeatures, TradeFlowMetrics, TradeSizeMetrics,
+};
 pub use rolling_features::{RollingFeatures, RollingWindow, WindowType};
-pub use time_features::{TimeFeatures, TradingSession, SessionConfig};
-pub use transformations::{FeatureScaler, ScalingMethod, FeatureEngineer, FeatureValidator, ValidationReport};
+pub use time_features::{SessionConfig, TimeFeatures, TradingSession};
+pub use transformations::{
+    FeatureEngineer, FeatureScaler, FeatureValidator, ScalingMethod, ValidationReport,
+};
 
 /// Configuration for feature extraction
 #[derive(Debug, Clone)]
@@ -82,7 +86,7 @@ impl FeatureExtractor {
         } else {
             None
         };
-        
+
         Self {
             config: config.clone(),
             book_features: HashMap::new(),
@@ -114,16 +118,24 @@ impl FeatureExtractor {
             .entry(instrument_id)
             .or_insert_with(|| RollingFeatures::new(self.config.rolling_window_us))
     }
-    
+
     /// Get or create context features for an instrument
-    fn get_context_features(&mut self, instrument_id: InstrumentId, risk_limits: RiskLimits) -> &mut ContextFeatures {
+    fn get_context_features(
+        &mut self,
+        instrument_id: InstrumentId,
+        risk_limits: RiskLimits,
+    ) -> &mut ContextFeatures {
         self.context_features
             .entry(instrument_id)
             .or_insert_with(|| ContextFeatures::new(risk_limits))
     }
 
     /// Extract all features for a given instrument at current state
-    pub fn extract_features(&mut self, instrument_id: InstrumentId, timestamp: u64) -> FeatureVector {
+    pub fn extract_features(
+        &mut self,
+        instrument_id: InstrumentId,
+        timestamp: u64,
+    ) -> FeatureVector {
         let mut features = FeatureVector::new(instrument_id, timestamp);
 
         // Extract book features
@@ -144,7 +156,7 @@ impl FeatureExtractor {
                 rolling_feat.add_to_vector(&mut features);
             }
         }
-        
+
         // Extract time features
         if self.config.enable_time_features {
             if let Some(ref time_feat) = self.time_features {
@@ -154,7 +166,7 @@ impl FeatureExtractor {
 
         features
     }
-    
+
     /// Extract features with strategy context
     pub fn extract_with_context(
         &mut self,
@@ -164,18 +176,19 @@ impl FeatureExtractor {
     ) -> FeatureVector {
         // Extract all standard features
         let mut features = self.extract_features(instrument_id, timestamp);
-        
+
         // Add context features if enabled
         if self.config.enable_context_features {
-            let context_feat = self.get_context_features(instrument_id, context.risk_limits.clone());
-            
+            let context_feat =
+                self.get_context_features(instrument_id, context.risk_limits.clone());
+
             // Update context features with current position
             context_feat.position = context.position.clone();
-            
+
             // Add context features to vector
             context_feat.add_to_vector(&mut features, context.current_price, timestamp);
         }
-        
+
         features
     }
 
@@ -188,17 +201,17 @@ impl FeatureExtractor {
     pub fn collector_mut(&mut self) -> &mut FeatureCollector {
         &mut self.collector
     }
-    
+
     /// Get time features (if enabled)
     pub fn time_features(&self) -> Option<&TimeFeatures> {
         self.time_features.as_ref()
     }
-    
+
     /// Get mutable time features
     pub fn time_features_mut(&mut self) -> Option<&mut TimeFeatures> {
         self.time_features.as_mut()
     }
-    
+
     /// Update context features from a fill event
     pub fn update_context_from_fill(
         &mut self,
@@ -219,11 +232,31 @@ impl FeatureExtractor {
     /// Process order book events and extract features
     pub fn handle_event(&mut self, event: &OrderBookEvent) {
         let (instrument_id, timestamp) = match event {
-            OrderBookEvent::OrderAdded { instrument_id, timestamp, .. } |
-            OrderBookEvent::OrderModified { instrument_id, timestamp, .. } |
-            OrderBookEvent::OrderCancelled { instrument_id, timestamp, .. } |
-            OrderBookEvent::BookCleared { instrument_id, timestamp, .. } |
-            OrderBookEvent::BBOChanged { instrument_id, timestamp, .. } => (*instrument_id, *timestamp),
+            OrderBookEvent::OrderAdded {
+                instrument_id,
+                timestamp,
+                ..
+            }
+            | OrderBookEvent::OrderModified {
+                instrument_id,
+                timestamp,
+                ..
+            }
+            | OrderBookEvent::OrderCancelled {
+                instrument_id,
+                timestamp,
+                ..
+            }
+            | OrderBookEvent::BookCleared {
+                instrument_id,
+                timestamp,
+                ..
+            }
+            | OrderBookEvent::BBOChanged {
+                instrument_id,
+                timestamp,
+                ..
+            } => (*instrument_id, *timestamp),
         };
 
         // Update book features with every MBO event
@@ -232,12 +265,12 @@ impl FeatureExtractor {
 
         // Handle specific event types
         match event {
-            OrderBookEvent::BBOChanged { 
-                bid_price, 
-                bid_quantity, 
-                ask_price, 
+            OrderBookEvent::BBOChanged {
+                bid_price,
+                bid_quantity,
+                ask_price,
                 ask_quantity,
-                .. 
+                ..
             } => {
                 // Update BBO-specific features
                 book_feat.update_bbo(*bid_price, *bid_quantity, *ask_price, *ask_quantity);
@@ -255,8 +288,13 @@ impl FeatureExtractor {
                 let feature_vector = self.extract_features(instrument_id, timestamp);
                 self.collector.collect(feature_vector);
             }
-            
-            OrderBookEvent::OrderAdded { price, quantity, side, .. } => {
+
+            OrderBookEvent::OrderAdded {
+                price,
+                quantity,
+                side,
+                ..
+            } => {
                 // If this represents a trade (market order hitting resting order)
                 // Update flow features
                 if self.config.enable_flow_features {
@@ -265,7 +303,7 @@ impl FeatureExtractor {
                     // For now, treat aggressive orders as trades
                     let is_buy = matches!(side, Side::Bid);
                     flow_feat.update_trade(*price, *quantity, is_buy, timestamp);
-                    
+
                     // Update rolling features with trade data
                     if self.config.enable_rolling_features {
                         let rolling_feat = self.get_rolling_features(instrument_id);
@@ -273,7 +311,7 @@ impl FeatureExtractor {
                     }
                 }
             }
-            
+
             _ => {} // Other events already handled in book features
         }
     }
@@ -298,7 +336,7 @@ mod tests {
         let mut extractor = FeatureExtractor::new(FeatureConfig::default());
         let instrument_id = 1;
         let timestamp = 1000;
-        
+
         let event = OrderBookEvent::BBOChanged {
             instrument_id,
             publisher_id: 1,
@@ -308,22 +346,22 @@ mod tests {
             ask_quantity: Some(Quantity::new(15)),
             timestamp,
         };
-        
+
         extractor.handle_event(&event);
-        
+
         // Verify features were created
         assert!(extractor.book_features.contains_key(&instrument_id));
         assert!(extractor.rolling_features.contains_key(&instrument_id));
-        
+
         // Verify features were collected
         assert_eq!(extractor.collector().len(), 1);
     }
 
-    #[test] 
+    #[test]
     fn test_order_event_processing() {
         let mut extractor = FeatureExtractor::new(FeatureConfig::default());
         let instrument_id = 1;
-        
+
         // Add an order
         let add_event = OrderBookEvent::OrderAdded {
             instrument_id,
@@ -334,12 +372,12 @@ mod tests {
             quantity: Quantity::new(10),
             timestamp: 1000,
         };
-        
+
         extractor.handle_event(&add_event);
-        
+
         // Verify book features were updated
         assert!(extractor.book_features.contains_key(&instrument_id));
-        
+
         // If flow features are enabled, they should be updated too
         if extractor.config.enable_flow_features {
             assert!(extractor.flow_features.contains_key(&instrument_id));

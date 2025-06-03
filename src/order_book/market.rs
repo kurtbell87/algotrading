@@ -19,29 +19,32 @@ impl Market {
         let inst = mbo.hd.instrument_id;
         let pub_id = mbo.hd.publisher_id as u8;
         let entry = self.books.entry(inst).or_default();
-        
+
         let book = if let Some((_, b)) = entry.iter_mut().find(|(p, _)| *p == pub_id) {
             b
         } else {
             entry.push((pub_id, Book::new()));
             &mut entry.last_mut().unwrap().1
         };
-        
+
         book.apply(mbo);
     }
 
     /// Get aggregated BBO across all publishers for an instrument
-    pub fn aggregated_bbo(&self, inst: InstrumentId) -> (Option<LevelSummary>, Option<LevelSummary>) {
+    pub fn aggregated_bbo(
+        &self,
+        inst: InstrumentId,
+    ) -> (Option<LevelSummary>, Option<LevelSummary>) {
         let Some(list) = self.books.get(&inst) else {
             return (None, None);
         };
-        
+
         let mut best_bid: Option<LevelSummary> = None;
         let mut best_ask: Option<LevelSummary> = None;
 
         for (_, book) in list {
             let (bid, ask) = book.bbo();
-            
+
             if let Some(b) = bid {
                 match &mut best_bid {
                     None => best_bid = Some(b),
@@ -53,7 +56,7 @@ impl Market {
                     _ => {}
                 }
             }
-            
+
             if let Some(a) = ask {
                 match &mut best_ask {
                     None => best_ask = Some(a),
@@ -66,7 +69,7 @@ impl Market {
                 }
             }
         }
-        
+
         (best_bid, best_ask)
     }
 

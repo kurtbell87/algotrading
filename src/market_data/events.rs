@@ -1,7 +1,7 @@
 //! Market data event types
 
-use crate::core::types::{InstrumentId, Price, Quantity, OrderId};
 use crate::core::Side;
+use crate::core::types::{InstrumentId, OrderId, Price, Quantity};
 use crate::order_book::events::OrderBookEvent;
 
 /// Unified market event type
@@ -27,7 +27,7 @@ impl MarketEvent {
             Self::Session(event) => event.instrument_id,
         }
     }
-    
+
     /// Get the timestamp for this event
     pub fn timestamp(&self) -> u64 {
         match self {
@@ -37,12 +37,12 @@ impl MarketEvent {
             Self::Session(event) => event.timestamp,
         }
     }
-    
+
     /// Check if this is a trade event
     pub fn is_trade(&self) -> bool {
         matches!(self, Self::Trade(_))
     }
-    
+
     /// Check if this is an order book event
     pub fn is_order_book(&self) -> bool {
         matches!(self, Self::OrderBook(_))
@@ -80,13 +80,11 @@ impl BBOUpdate {
     /// Get mid price if both bid and ask are available
     pub fn mid_price(&self) -> Option<Price> {
         match (self.bid_price, self.ask_price) {
-            (Some(bid), Some(ask)) => {
-                Some(Price::from_f64((bid.as_f64() + ask.as_f64()) / 2.0))
-            }
+            (Some(bid), Some(ask)) => Some(Price::from_f64((bid.as_f64() + ask.as_f64()) / 2.0)),
             _ => None,
         }
     }
-    
+
     /// Get spread if both bid and ask are available
     pub fn spread(&self) -> Option<f64> {
         match (self.bid_price, self.ask_price) {
@@ -141,7 +139,7 @@ pub struct MarketSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_market_event_instrument_id() {
         let trade = TradeEvent {
@@ -154,14 +152,14 @@ mod tests {
             buyer_order_id: None,
             seller_order_id: None,
         };
-        
+
         let event = MarketEvent::Trade(trade);
         assert_eq!(event.instrument_id(), 1);
         assert_eq!(event.timestamp(), 1000);
         assert!(event.is_trade());
         assert!(!event.is_order_book());
     }
-    
+
     #[test]
     fn test_bbo_calculations() {
         let bbo = BBOUpdate {
@@ -174,10 +172,10 @@ mod tests {
             ask_order_count: Some(3),
             timestamp: 1000,
         };
-        
+
         let mid = bbo.mid_price().unwrap();
         assert_eq!(mid.as_f64(), 100.5);
-        
+
         let spread = bbo.spread().unwrap();
         assert_eq!(spread, 1.0);
     }

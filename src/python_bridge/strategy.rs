@@ -1,12 +1,15 @@
 //! Python strategy integration and ML-enhanced strategies
 
 use crate::core::types::{InstrumentId, Price, Quantity};
+use crate::features::{FeatureConfig, FeatureExtractor};
 use crate::market_data::events::MarketEvent;
-use crate::strategy::{Strategy, StrategyConfig, StrategyContext, StrategyOutput, StrategyError};
-use crate::strategy::output::{OrderRequest, StrategyMetrics};
-use crate::features::{FeatureExtractor, FeatureConfig};
 use crate::python_bridge::models::PythonModel;
-use crate::python_bridge::types::{PyFeatureVector, PyMarketEvent, PyStrategyContext, PyOrderRequest, PyPrediction, PyPrice, PyQuantity, PyOrderSide};
+use crate::python_bridge::types::{
+    PyFeatureVector, PyMarketEvent, PyOrderRequest, PyOrderSide, PyPrediction, PyPrice, PyQuantity,
+    PyStrategyContext,
+};
+use crate::strategy::output::{OrderRequest, StrategyMetrics};
+use crate::strategy::{Strategy, StrategyConfig, StrategyContext, StrategyError, StrategyOutput};
 use pyo3::prelude::*;
 
 /// ML-enhanced strategy that uses Python models for predictions
@@ -84,9 +87,9 @@ impl MLEnhancedStrategy {
         let config = StrategyConfig::new(strategy_id, "ML Enhanced Strategy")
             .with_instrument(instrument_id)
             .with_max_position(model_config.max_position_size);
-        
+
         let feature_extractor = FeatureExtractor::new(feature_config);
-        
+
         Ok(Self {
             config,
             feature_extractor,
@@ -97,9 +100,13 @@ impl MLEnhancedStrategy {
             last_prediction_time: 0,
         })
     }
-    
+
     /// Extract features and convert to Python format
-    fn extract_python_features(&mut self, event: &MarketEvent, timestamp: u64) -> Result<PyFeatureVector, StrategyError> {
+    fn extract_python_features(
+        &mut self,
+        event: &MarketEvent,
+        timestamp: u64,
+    ) -> Result<PyFeatureVector, StrategyError> {
         // Convert market event to order book event for feature extraction
         // This is a simplified conversion - in practice you'd want more sophisticated mapping
         let order_book_event = match event {
@@ -114,16 +121,22 @@ impl MLEnhancedStrategy {
                     timestamp: bbo_event.timestamp,
                 }
             }
-            _ => return Err(StrategyError::FeatureError("Unsupported event type for features".to_string())),
+            _ => {
+                return Err(StrategyError::FeatureError(
+                    "Unsupported event type for features".to_string(),
+                ));
+            }
         };
-        
+
         // Extract features using the feature extractor
         self.feature_extractor.handle_event(&order_book_event);
-        let feature_vector = self.feature_extractor.extract_features(order_book_event.instrument_id(), timestamp);
-        
+        let feature_vector = self
+            .feature_extractor
+            .extract_features(order_book_event.instrument_id(), timestamp);
+
         // Convert to Python feature vector
         let mut py_features = PyFeatureVector::new(timestamp);
-        
+
         for feature_name in &self.model_config.feature_names {
             if let Some(value) = feature_vector.get(feature_name) {
                 py_features.add_feature(feature_name.clone(), value);
@@ -132,17 +145,21 @@ impl MLEnhancedStrategy {
                 py_features.add_feature(feature_name.clone(), 0.0);
             }
         }
-        
+
         Ok(py_features)
     }
-    
+
     /// Generate trading signal from ML prediction
-    fn generate_signal(&self, prediction: &PyPrediction, current_position: i64) -> Option<PyOrderSide> {
+    fn generate_signal(
+        &self,
+        prediction: &PyPrediction,
+        current_position: i64,
+    ) -> Option<PyOrderSide> {
         // Only act if confidence is high enough
         if prediction.confidence < self.model_config.confidence_threshold {
             return None;
         }
-        
+
         // Generate entry signals
         if current_position == 0 {
             if prediction.signal > self.model_config.entry_threshold {
@@ -157,10 +174,10 @@ impl MLEnhancedStrategy {
         } else if current_position < 0 && prediction.signal > self.model_config.exit_threshold {
             return Some(PyOrderSide::BuyCover);
         }
-        
+
         None
     }
-    
+
     /// Create order from signal
     fn create_order(
         &self,
@@ -170,20 +187,16 @@ impl MLEnhancedStrategy {
     ) -> Result<OrderRequest, StrategyError> {
         let instrument_id = self.config.instruments[0];
         let quantity = Quantity::from(self.model_config.order_size);
-        
+
         let order = if self.model_config.use_limit_orders {
             let tick_size = 25; // TODO: Get from instrument config
             let offset = self.model_config.limit_order_offset_ticks * tick_size;
-            
+
             let limit_price = match side {
-                PyOrderSide::Buy | PyOrderSide::BuyCover => {
-                    Price::new(current_price.0 - offset)
-                }
-                PyOrderSide::Sell | PyOrderSide::SellShort => {
-                    Price::new(current_price.0 + offset)
-                }
+                PyOrderSide::Buy | PyOrderSide::BuyCover => Price::new(current_price.0 - offset),
+                PyOrderSide::Sell | PyOrderSide::SellShort => Price::new(current_price.0 + offset),
             };
-            
+
             OrderRequest::limit_order(
                 context.strategy_id.clone(),
                 instrument_id,
@@ -199,7 +212,7 @@ impl MLEnhancedStrategy {
                 quantity,
             )
         };
-        
+
         Ok(order)
     }
 }
@@ -211,15 +224,20 @@ impl Strategy for MLEnhancedStrategy {
         self.last_prediction_time = 0;
         Ok(())
     }
-    
-    fn on_market_event(&mut self, event: &MarketEvent, context: &StrategyContext) -> StrategyOutput {
+
+    fn on_market_event(
+        &mut self,
+        event: &MarketEvent,
+        context: &StrategyContext,
+    ) -> StrategyOutput {
         let mut output = StrategyOutput::default();
-        
+
         // Check if enough time has passed since last prediction
-        if event.timestamp() - self.last_prediction_time < self.model_config.prediction_interval_us {
+        if event.timestamp() - self.last_prediction_time < self.model_config.prediction_interval_us
+        {
             return output;
         }
-        
+
         // Extract current price for order creation
         let current_price = match event {
             MarketEvent::Trade(trade) => {
@@ -243,7 +261,7 @@ impl Strategy for MLEnhancedStrategy {
             }
             _ => None,
         };
-        
+
         if let Some(price) = current_price {
             // Extract features for ML model
             match self.extract_python_features(event, event.timestamp()) {
@@ -252,18 +270,21 @@ impl Strategy for MLEnhancedStrategy {
                     match self.model.predict(&features) {
                         Ok(prediction) => {
                             self.last_prediction_time = event.timestamp();
-                            
+
                             // Store prediction for analysis
-                            self.recent_predictions.push((event.timestamp(), prediction.clone()));
+                            self.recent_predictions
+                                .push((event.timestamp(), prediction.clone()));
                             if self.recent_predictions.len() > 100 {
                                 self.recent_predictions.remove(0);
                             }
-                            
+
                             // Update position from context
                             self.current_position = context.position.quantity;
-                            
+
                             // Generate trading signal
-                            if let Some(side) = self.generate_signal(&prediction, self.current_position) {
+                            if let Some(side) =
+                                self.generate_signal(&prediction, self.current_position)
+                            {
                                 match self.create_order(side, price, context) {
                                     Ok(order) => {
                                         output.orders.push(order);
@@ -274,7 +295,7 @@ impl Strategy for MLEnhancedStrategy {
                                     }
                                 }
                             }
-                            
+
                             // Add metrics
                             let mut metrics = StrategyMetrics::new(event.timestamp());
                             metrics.add("ml_signal", prediction.signal);
@@ -293,10 +314,10 @@ impl Strategy for MLEnhancedStrategy {
                 }
             }
         }
-        
+
         output
     }
-    
+
     fn config(&self) -> &StrategyConfig {
         &self.config
     }
@@ -320,56 +341,52 @@ impl PythonStrategyWrapper {
         py_strategy: PyObject,
     ) -> Result<Self, StrategyError> {
         let config = StrategyConfig::new(strategy_id, "Python Strategy");
-        
+
         // Verify Python strategy has required methods
         Python::with_gil(|py| {
             let strategy_ref = py_strategy.bind(py);
-            
+
             if !strategy_ref.hasattr("on_market_event")? {
                 return Err(StrategyError::InitializationError(
-                    "Python strategy must have on_market_event method".to_string()
+                    "Python strategy must have on_market_event method".to_string(),
                 ));
             }
-            
+
             Ok(())
         })?;
-        
+
         Ok(Self {
             config,
             py_strategy,
             initialized: false,
         })
     }
-    
+
     /// Convert Rust market event to Python format
     fn convert_market_event(&self, event: &MarketEvent) -> PyMarketEvent {
         match event {
-            MarketEvent::Trade(trade) => {
-                PyMarketEvent::with_trade(
-                    trade.instrument_id,
-                    trade.timestamp,
-                    PyPrice::from(trade.price),
-                    PyQuantity::from(trade.quantity),
-                    trade.aggressor_side.into(),
-                )
-            }
-            MarketEvent::BBO(bbo) => {
-                PyMarketEvent::with_bbo(
-                    bbo.instrument_id,
-                    bbo.timestamp,
-                    bbo.bid_price.map(PyPrice::from),
-                    bbo.ask_price.map(PyPrice::from),
-                    bbo.bid_quantity.map(PyQuantity::from),
-                    bbo.ask_quantity.map(PyQuantity::from),
-                )
-            }
+            MarketEvent::Trade(trade) => PyMarketEvent::with_trade(
+                trade.instrument_id,
+                trade.timestamp,
+                PyPrice::from(trade.price),
+                PyQuantity::from(trade.quantity),
+                trade.aggressor_side.into(),
+            ),
+            MarketEvent::BBO(bbo) => PyMarketEvent::with_bbo(
+                bbo.instrument_id,
+                bbo.timestamp,
+                bbo.bid_price.map(PyPrice::from),
+                bbo.ask_price.map(PyPrice::from),
+                bbo.bid_quantity.map(PyQuantity::from),
+                bbo.ask_quantity.map(PyQuantity::from),
+            ),
             _ => {
                 // Generic event for other types
                 PyMarketEvent::new("Other".to_string(), 0, event.timestamp())
             }
         }
     }
-    
+
     /// Convert Rust strategy context to Python format
     fn convert_context(&self, context: &StrategyContext) -> PyStrategyContext {
         PyStrategyContext::new(
@@ -380,9 +397,12 @@ impl PythonStrategyWrapper {
             context.is_backtesting,
         )
     }
-    
+
     /// Convert Python order requests to Rust format
-    fn convert_order_request(&self, py_order: &PyOrderRequest) -> Result<OrderRequest, StrategyError> {
+    fn convert_order_request(
+        &self,
+        py_order: &PyOrderRequest,
+    ) -> Result<OrderRequest, StrategyError> {
         let order = if py_order.order_type == "Market" {
             OrderRequest::market_order(
                 py_order.strategy_id.clone(),
@@ -400,12 +420,17 @@ impl PythonStrategyWrapper {
                     py_order.quantity.into(),
                 )
             } else {
-                return Err(StrategyError::InvalidOrder("Limit order missing price".to_string()));
+                return Err(StrategyError::InvalidOrder(
+                    "Limit order missing price".to_string(),
+                ));
             }
         } else {
-            return Err(StrategyError::InvalidOrder(format!("Unknown order type: {}", py_order.order_type)));
+            return Err(StrategyError::InvalidOrder(format!(
+                "Unknown order type: {}",
+                py_order.order_type
+            )));
         };
-        
+
         Ok(order)
     }
 }
@@ -415,33 +440,42 @@ impl Strategy for PythonStrategyWrapper {
         Python::with_gil(|py| {
             let strategy_ref = self.py_strategy.bind(py);
             let py_context = self.convert_context(context);
-            
+
             if strategy_ref.hasattr("initialize")? {
                 strategy_ref.call_method1("initialize", (py_context,))?;
             }
-            
+
             self.initialized = true;
             Ok(())
         })
-        .map_err(|e: PyErr| StrategyError::InitializationError(format!("Python strategy initialization failed: {}", e)))
+        .map_err(|e: PyErr| {
+            StrategyError::InitializationError(format!(
+                "Python strategy initialization failed: {}",
+                e
+            ))
+        })
     }
-    
-    fn on_market_event(&mut self, event: &MarketEvent, context: &StrategyContext) -> StrategyOutput {
+
+    fn on_market_event(
+        &mut self,
+        event: &MarketEvent,
+        context: &StrategyContext,
+    ) -> StrategyOutput {
         if !self.initialized {
             return StrategyOutput::default();
         }
-        
+
         Python::with_gil(|py| {
             let strategy_ref = self.py_strategy.bind(py);
             let py_event = self.convert_market_event(event);
             let py_context = self.convert_context(context);
-            
+
             match strategy_ref.call_method1("on_market_event", (py_event, py_context)) {
                 Ok(result) => {
                     // Parse the result from Python
                     // Expected format: {"orders": [...], "metrics": {...}}
                     let mut output = StrategyOutput::default();
-                    
+
                     if let Ok(dict) = result.downcast::<pyo3::types::PyDict>() {
                         // Extract orders
                         if let Ok(Some(orders_list)) = dict.get_item("orders") {
@@ -456,13 +490,15 @@ impl Strategy for PythonStrategyWrapper {
                                 }
                             }
                         }
-                        
+
                         // Extract metrics
                         if let Ok(Some(metrics_dict)) = dict.get_item("metrics") {
                             if let Ok(metrics) = metrics_dict.downcast::<pyo3::types::PyDict>() {
                                 let mut strategy_metrics = StrategyMetrics::new(event.timestamp());
                                 for (key, value) in metrics.iter() {
-                                    if let (Ok(k), Ok(v)) = (key.extract::<String>(), value.extract::<f64>()) {
+                                    if let (Ok(k), Ok(v)) =
+                                        (key.extract::<String>(), value.extract::<f64>())
+                                    {
                                         strategy_metrics.add(&k, v);
                                     }
                                 }
@@ -470,7 +506,7 @@ impl Strategy for PythonStrategyWrapper {
                             }
                         }
                     }
-                    
+
                     output
                 }
                 Err(e) => {
@@ -480,7 +516,7 @@ impl Strategy for PythonStrategyWrapper {
             }
         })
     }
-    
+
     fn config(&self) -> &StrategyConfig {
         &self.config
     }
@@ -502,23 +538,27 @@ mod tests {
     #[test]
     fn test_signal_generation() {
         let config = MLModelConfig::default();
-        
+
         // Create a mock strategy (without actual ML model)
         let prediction_buy = PyPrediction::new(0.8, 0.9); // Strong buy signal
         let prediction_sell = PyPrediction::new(-0.8, 0.9); // Strong sell signal
         let prediction_weak = PyPrediction::new(0.3, 0.5); // Weak signal, low confidence
-        
+
         // Mock strategy for testing signal generation logic
         struct MockStrategy {
             config: MLModelConfig,
         }
-        
+
         impl MockStrategy {
-            fn generate_signal(&self, prediction: &PyPrediction, current_position: i64) -> Option<PyOrderSide> {
+            fn generate_signal(
+                &self,
+                prediction: &PyPrediction,
+                current_position: i64,
+            ) -> Option<PyOrderSide> {
                 if prediction.confidence < self.config.confidence_threshold {
                     return None;
                 }
-                
+
                 if current_position == 0 {
                     if prediction.signal > self.config.entry_threshold {
                         return Some(PyOrderSide::Buy);
@@ -530,21 +570,33 @@ mod tests {
                 } else if current_position < 0 && prediction.signal > self.config.exit_threshold {
                     return Some(PyOrderSide::BuyCover);
                 }
-                
+
                 None
             }
         }
-        
+
         let mock_strategy = MockStrategy { config };
-        
+
         // Test entry signals
-        assert_eq!(mock_strategy.generate_signal(&prediction_buy, 0), Some(PyOrderSide::Buy));
-        assert_eq!(mock_strategy.generate_signal(&prediction_sell, 0), Some(PyOrderSide::SellShort));
+        assert_eq!(
+            mock_strategy.generate_signal(&prediction_buy, 0),
+            Some(PyOrderSide::Buy)
+        );
+        assert_eq!(
+            mock_strategy.generate_signal(&prediction_sell, 0),
+            Some(PyOrderSide::SellShort)
+        );
         assert_eq!(mock_strategy.generate_signal(&prediction_weak, 0), None);
-        
+
         // Test exit signals
-        assert_eq!(mock_strategy.generate_signal(&prediction_sell, 5), Some(PyOrderSide::Sell));
-        assert_eq!(mock_strategy.generate_signal(&prediction_buy, -5), Some(PyOrderSide::BuyCover));
+        assert_eq!(
+            mock_strategy.generate_signal(&prediction_sell, 5),
+            Some(PyOrderSide::Sell)
+        );
+        assert_eq!(
+            mock_strategy.generate_signal(&prediction_buy, -5),
+            Some(PyOrderSide::BuyCover)
+        );
     }
 
     #[test]
@@ -553,15 +605,15 @@ mod tests {
         py_features.add_feature("price".to_string(), 100.0);
         py_features.add_feature("volume".to_string(), 1000.0);
         py_features.add_feature("spread".to_string(), 0.05);
-        
+
         assert_eq!(py_features.__len__(), 3);
         assert_eq!(py_features.get_feature("price"), Some(100.0));
         assert_eq!(py_features.get_feature("volume"), Some(1000.0));
         assert_eq!(py_features.get_feature("spread"), Some(0.05));
-        
+
         let feature_array = py_features.get_features_as_array();
         assert_eq!(feature_array.len(), 3);
-        
+
         let feature_names = py_features.get_feature_names();
         assert_eq!(feature_names.len(), 3);
         assert!(feature_names.contains(&"price".to_string()));

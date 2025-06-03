@@ -1,4 +1,4 @@
-use crate::core::{InstrumentId, PublisherId, OrderId, Price, Quantity, Side};
+use crate::core::{InstrumentId, OrderId, Price, PublisherId, Quantity, Side};
 
 /// Order book specific events
 #[derive(Debug, Clone)]
@@ -13,7 +13,7 @@ pub enum OrderBookEvent {
         quantity: Quantity,
         timestamp: u64,
     },
-    
+
     /// Order modified in book
     OrderModified {
         instrument_id: InstrumentId,
@@ -22,7 +22,7 @@ pub enum OrderBookEvent {
         new_quantity: Quantity,
         timestamp: u64,
     },
-    
+
     /// Order cancelled from book
     OrderCancelled {
         instrument_id: InstrumentId,
@@ -30,14 +30,14 @@ pub enum OrderBookEvent {
         order_id: OrderId,
         timestamp: u64,
     },
-    
+
     /// Book cleared
     BookCleared {
         instrument_id: InstrumentId,
         publisher_id: PublisherId,
         timestamp: u64,
     },
-    
+
     /// Best bid/ask changed
     BBOChanged {
         instrument_id: InstrumentId,
@@ -61,7 +61,7 @@ impl OrderBookEvent {
             Self::BBOChanged { instrument_id, .. } => *instrument_id,
         }
     }
-    
+
     /// Get timestamp
     pub fn timestamp(&self) -> u64 {
         match self {
@@ -72,7 +72,7 @@ impl OrderBookEvent {
             Self::BBOChanged { timestamp, .. } => *timestamp,
         }
     }
-    
+
     /// Get publisher ID
     pub fn publisher_id(&self) -> PublisherId {
         match self {

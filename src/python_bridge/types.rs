@@ -1,7 +1,7 @@
 //! Python bindings for core Rust types
 
-use crate::core::types::{InstrumentId, Price, Quantity};
 use crate::core::Side;
+use crate::core::types::{InstrumentId, Price, Quantity};
 use crate::strategy::OrderSide;
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -243,11 +243,7 @@ pub struct PyMarketEvent {
 #[pymethods]
 impl PyMarketEvent {
     #[new]
-    pub fn new(
-        event_type: String,
-        instrument_id: InstrumentId,
-        timestamp: u64,
-    ) -> Self {
+    pub fn new(event_type: String, instrument_id: InstrumentId, timestamp: u64) -> Self {
         Self {
             event_type,
             instrument_id,
@@ -513,13 +509,13 @@ mod tests {
     fn test_py_price_operations() {
         let price1 = PyPrice::from_f64(100.50);
         let price2 = PyPrice::from_f64(99.75);
-        
+
         let sum = price1.__add__(&price2);
         assert!((sum.as_f64() - 200.25).abs() < 0.01);
-        
+
         let diff = price1.__sub__(&price2);
         assert!((diff.as_f64() - 0.75).abs() < 0.01);
-        
+
         let scaled = price1.__mul__(2.0);
         assert!((scaled.as_f64() - 201.0).abs() < 0.01);
     }
@@ -528,13 +524,13 @@ mod tests {
     fn test_py_quantity_operations() {
         let qty1 = PyQuantity::new(100);
         let qty2 = PyQuantity::new(50);
-        
+
         let sum = qty1.__add__(&qty2);
         assert_eq!(sum.value, 150);
-        
+
         let diff = qty1.__sub__(&qty2);
         assert_eq!(diff.value, 50);
-        
+
         let scaled = qty1.__mul__(2);
         assert_eq!(scaled.value, 200);
     }
@@ -544,11 +540,11 @@ mod tests {
         let mut features = PyFeatureVector::new(1000);
         features.add_feature("price".to_string(), 100.0);
         features.add_feature("volume".to_string(), 1000.0);
-        
+
         assert_eq!(features.__len__(), 2);
         assert_eq!(features.get_feature("price"), Some(100.0));
         assert_eq!(features.get_feature("nonexistent"), None);
-        
+
         let array = features.get_features_as_array();
         assert_eq!(array.len(), 2);
     }
@@ -561,13 +557,13 @@ mod tests {
             PyOrderSide::Buy,
             PyQuantity::new(100),
         );
-        
+
         assert_eq!(order.strategy_id, "test_strategy");
         assert_eq!(order.instrument_id, 1);
         assert_eq!(order.side, PyOrderSide::Buy);
         assert_eq!(order.quantity.value, 100);
         assert_eq!(order.order_type, "Market");
-        
+
         let mut limit_order = order;
         limit_order.as_limit_order(PyPrice::from_f64(100.0));
         assert_eq!(limit_order.order_type, "Limit");
@@ -583,13 +579,13 @@ mod tests {
             PyQuantity::new(50),
             PySide::Bid,
         );
-        
+
         assert_eq!(trade_event.event_type, "Trade");
         assert_eq!(trade_event.instrument_id, 1);
         assert_eq!(trade_event.timestamp, 1000);
         assert!(trade_event.price.is_some());
         assert_eq!(trade_event.price.unwrap().as_f64(), 100.0);
-        
+
         let bbo_event = PyMarketEvent::with_bbo(
             1,
             2000,
@@ -598,7 +594,7 @@ mod tests {
             Some(PyQuantity::new(100)),
             Some(PyQuantity::new(200)),
         );
-        
+
         assert_eq!(bbo_event.event_type, "BBO");
         assert!(bbo_event.bid_price.is_some());
         assert!(bbo_event.ask_price.is_some());

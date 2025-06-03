@@ -21,7 +21,7 @@ pub trait OrderBook {
 pub trait FeatureCalculator: Send + Sync {
     type Input;
     type Output;
-    
+
     fn calculate(&mut self, input: &Self::Input) -> Self::Output;
     fn window_size(&self) -> usize;
     fn name(&self) -> &str;

@@ -56,9 +56,7 @@ fn parse_args() -> Mode {
             }
         }
         _ => {
-            eprintln!(
-                "USAGE\n  cargo run --release <file|dir>\n  cargo run --release -- --verify"
-            );
+            eprintln!("USAGE\n  cargo run --release <file|dir>\n  cargo run --release -- --verify");
             std::process::exit(1);
         }
     }
@@ -73,9 +71,9 @@ fn process_market_data(paths: Vec<PathBuf>) -> std::result::Result<(), Box<dyn s
 }
 
 fn process_market_data_with_callback<F>(
-    paths: Vec<PathBuf>, 
+    paths: Vec<PathBuf>,
     mut callback: F,
-) -> std::result::Result<(), Box<dyn std::error::Error>> 
+) -> std::result::Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(&MarketUpdate, &mut HashMap<InstId, Book>, u64),
 {

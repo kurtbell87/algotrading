@@ -3,13 +3,13 @@
 //! This module handles order matching, fill generation, and execution simulation
 //! including realistic latency and market impact models.
 
-use crate::core::types::{InstrumentId, Price, Quantity, OrderId};
-use crate::core::Side;
-use crate::strategy::OrderSide;
-use crate::order_book::book::Book;
-use crate::strategy::{OrderRequest, TimeInForce};
-use crate::backtest::events::{FillEvent, OrderUpdateEvent, OrderStatus};
+use crate::backtest::events::{FillEvent, OrderStatus, OrderUpdateEvent};
 use crate::backtest::market_state::MarketStateManager;
+use crate::core::Side;
+use crate::core::types::{InstrumentId, OrderId, Price, Quantity};
+use crate::order_book::book::Book;
+use crate::strategy::OrderSide;
+use crate::strategy::{OrderRequest, TimeInForce};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 
@@ -60,7 +60,7 @@ pub enum FillModel {
     /// Fill at mid-market price
     MidPoint,
     /// Realistic fill considering queue position
-    Realistic { 
+    Realistic {
         /// Probability of getting filled at touch
         maker_fill_prob: f64,
         /// Slippage in ticks for aggressive orders
@@ -75,12 +75,14 @@ impl std::fmt::Debug for FillModel {
         match self {
             Self::Optimistic => write!(f, "Optimistic"),
             Self::MidPoint => write!(f, "MidPoint"),
-            Self::Realistic { maker_fill_prob, taker_slippage_ticks } => {
-                f.debug_struct("Realistic")
-                    .field("maker_fill_prob", maker_fill_prob)
-                    .field("taker_slippage_ticks", taker_slippage_ticks)
-                    .finish()
-            }
+            Self::Realistic {
+                maker_fill_prob,
+                taker_slippage_ticks,
+            } => f
+                .debug_struct("Realistic")
+                .field("maker_fill_prob", maker_fill_prob)
+                .field("taker_slippage_ticks", taker_slippage_ticks)
+                .finish(),
             Self::Custom(_) => write!(f, "Custom(..)"),
         }
     }
@@ -95,7 +97,7 @@ pub trait FillLogic: Send + Sync {
         book: &Book,
         timestamp: u64,
     ) -> Option<(Price, Quantity)>;
-    
+
     /// Clone the fill logic
     fn clone_box(&self) -> Box<dyn FillLogic>;
 }
@@ -158,12 +160,12 @@ impl ExecutionEngine {
             commission_per_contract: 0.5, // Default $0.50 per contract
         }
     }
-    
+
     /// Set commission per contract
     pub fn set_commission(&mut self, commission: f64) {
         self.commission_per_contract = commission;
     }
-    
+
     /// Submit an order
     pub fn submit_order(
         &mut self,
@@ -173,11 +175,11 @@ impl ExecutionEngine {
     ) -> OrderId {
         let order_id = self.next_order_id;
         self.next_order_id += 1;
-        
+
         // Calculate when order becomes active
         let latency = self.latency_model.calculate(&order.quantity);
         let active_time = current_time + latency;
-        
+
         // Create pending order
         let pending = PendingOrder {
             order,
@@ -187,27 +189,31 @@ impl ExecutionEngine {
             filled_quantity: Quantity::new(0),
             avg_fill_price: None,
         };
-        
+
         // Add to pending orders and queue
         self.pending_orders.insert(order_id, pending.clone());
         self.order_queue
             .entry(pending.order.instrument_id)
             .or_insert_with(VecDeque::new)
             .push_back(order_id);
-        
+
         order_id
     }
-    
+
     /// Cancel an order
-    pub fn cancel_order(&mut self, order_id: OrderId, current_time: u64) -> Option<OrderUpdateEvent> {
+    pub fn cancel_order(
+        &mut self,
+        order_id: OrderId,
+        current_time: u64,
+    ) -> Option<OrderUpdateEvent> {
         if let Some(mut order) = self.pending_orders.remove(&order_id) {
             order.status = OrderStatus::Cancelled;
-            
+
             // Remove from queue
             if let Some(queue) = self.order_queue.get_mut(&order.order.instrument_id) {
                 queue.retain(|&id| id != order_id);
             }
-            
+
             Some(OrderUpdateEvent {
                 order_id,
                 strategy_id: order.strategy_id,
@@ -219,25 +225,25 @@ impl ExecutionEngine {
             None
         }
     }
-    
+
     /// Process orders at current time
     pub fn process_orders(&mut self, current_time: u64) -> Vec<FillEvent> {
         let mut fills = Vec::new();
         let market_state = self.market_state.read().unwrap();
-        
+
         // Process each instrument's order queue
         for (instrument_id, queue) in &mut self.order_queue {
             let mut completed_orders = Vec::new();
-            
+
             // Get current order book
             let book_opt = market_state.get_order_book(*instrument_id);
             if book_opt.is_none() {
                 continue;
             }
-            
+
             let book = book_opt.unwrap();
             let book = book.read().unwrap();
-            
+
             // Process orders that are now active
             for &order_id in queue.iter() {
                 if let Some(pending) = self.pending_orders.get_mut(&order_id) {
@@ -245,14 +251,15 @@ impl ExecutionEngine {
                     if pending.active_time > current_time {
                         continue;
                     }
-                    
+
                     // Skip if already filled or cancelled
-                    if pending.status != OrderStatus::Accepted && 
-                       pending.status != OrderStatus::PartiallyFilled {
+                    if pending.status != OrderStatus::Accepted
+                        && pending.status != OrderStatus::PartiallyFilled
+                    {
                         completed_orders.push(order_id);
                         continue;
                     }
-                    
+
                     // Try to fill the order
                     if let Some(fill) = Self::try_fill_order_static(
                         &self.fill_model,
@@ -263,7 +270,7 @@ impl ExecutionEngine {
                         current_time,
                     ) {
                         fills.push(fill);
-                        
+
                         // Check if order is complete
                         if pending.filled_quantity.as_u32() >= pending.order.quantity.as_u32() {
                             pending.status = OrderStatus::Filled;
@@ -272,7 +279,7 @@ impl ExecutionEngine {
                             pending.status = OrderStatus::PartiallyFilled;
                         }
                     }
-                    
+
                     // Check time in force
                     if Self::should_expire_order(pending, current_time) {
                         pending.status = OrderStatus::Expired;
@@ -280,16 +287,16 @@ impl ExecutionEngine {
                     }
                 }
             }
-            
+
             // Remove completed orders from queue
             for order_id in completed_orders {
                 queue.retain(|&id| id != order_id);
             }
         }
-        
+
         fills
     }
-    
+
     /// Try to fill an order against the current book
     fn try_fill_order_static(
         fill_model: &FillModel,
@@ -300,37 +307,49 @@ impl ExecutionEngine {
         timestamp: u64,
     ) -> Option<FillEvent> {
         let remaining_qty = Quantity::new(
-            pending.order.quantity.as_u32().saturating_sub(pending.filled_quantity.as_u32())
+            pending
+                .order
+                .quantity
+                .as_u32()
+                .saturating_sub(pending.filled_quantity.as_u32()),
         );
         if remaining_qty.as_u32() == 0 {
             return None;
         }
-        
+
         // Get fill price and quantity based on fill model
         let (fill_price, fill_quantity) = match fill_model {
             FillModel::Optimistic => Self::optimistic_fill(pending, book, remaining_qty)?,
             FillModel::MidPoint => Self::midpoint_fill(pending, book, remaining_qty)?,
-            FillModel::Realistic { maker_fill_prob, taker_slippage_ticks } => {
-                Self::realistic_fill(pending, book, remaining_qty, *maker_fill_prob, *taker_slippage_ticks)?
-            }
-            FillModel::Custom(logic) => {
-                logic.calculate_fill(&pending.order, book, timestamp)?
-            }
+            FillModel::Realistic {
+                maker_fill_prob,
+                taker_slippage_ticks,
+            } => Self::realistic_fill(
+                pending,
+                book,
+                remaining_qty,
+                *maker_fill_prob,
+                *taker_slippage_ticks,
+            )?,
+            FillModel::Custom(logic) => logic.calculate_fill(&pending.order, book, timestamp)?,
         };
-        
+
         // Update pending order
-        pending.filled_quantity = Quantity::new(pending.filled_quantity.as_u32() + fill_quantity.as_u32());
-        
+        pending.filled_quantity =
+            Quantity::new(pending.filled_quantity.as_u32() + fill_quantity.as_u32());
+
         // Update average fill price
         if let Some(avg_price) = pending.avg_fill_price {
             let prev_qty = pending.filled_quantity.as_u32() - fill_quantity.as_u32();
-            let total_value = avg_price.as_f64() * prev_qty as f64
-                + fill_price.as_f64() * fill_quantity.as_f64();
-            pending.avg_fill_price = Some(Price::from_f64(total_value / pending.filled_quantity.as_f64()));
+            let total_value =
+                avg_price.as_f64() * prev_qty as f64 + fill_price.as_f64() * fill_quantity.as_f64();
+            pending.avg_fill_price = Some(Price::from_f64(
+                total_value / pending.filled_quantity.as_f64(),
+            ));
         } else {
             pending.avg_fill_price = Some(fill_price);
         }
-        
+
         // Create fill event
         Some(FillEvent {
             fill_id: timestamp, // Simple fill ID
@@ -342,10 +361,13 @@ impl ExecutionEngine {
             side: convert_order_side_to_side(pending.order.side),
             timestamp,
             commission: commission_per_contract * fill_quantity.as_f64(),
-            is_maker: matches!(pending.order.order_type, crate::strategy::output::OrderType::Limit),
+            is_maker: matches!(
+                pending.order.order_type,
+                crate::strategy::output::OrderType::Limit
+            ),
         })
     }
-    
+
     /// Optimistic fill - always fill at best available price
     fn optimistic_fill(
         pending: &PendingOrder,
@@ -353,7 +375,7 @@ impl ExecutionEngine {
         remaining_qty: Quantity,
     ) -> Option<(Price, Quantity)> {
         let (best_bid, best_ask) = book.bbo();
-        
+
         match pending.order.side {
             OrderSide::Buy | OrderSide::BuyCover => {
                 // Buying - check ask
@@ -369,7 +391,7 @@ impl ExecutionEngine {
             }
         }
     }
-    
+
     /// Midpoint fill - fill at mid-market price
     fn midpoint_fill(
         _pending: &PendingOrder,
@@ -379,13 +401,13 @@ impl ExecutionEngine {
         let (best_bid, best_ask) = book.bbo();
         let bid = best_bid?;
         let ask = best_ask?;
-        
+
         let mid_price = Price::from_f64((bid.price as f64 + ask.price as f64) / 2.0);
-        
+
         // Fill entire remaining quantity at mid
         Some((mid_price, remaining_qty))
     }
-    
+
     /// Realistic fill - considers queue position and market conditions
     fn realistic_fill(
         pending: &PendingOrder,
@@ -395,7 +417,7 @@ impl ExecutionEngine {
         taker_slippage_ticks: i64,
     ) -> Option<(Price, Quantity)> {
         use crate::strategy::output::OrderType;
-        
+
         match pending.order.order_type {
             OrderType::Market => {
                 // Market order - fill with slippage
@@ -408,7 +430,7 @@ impl ExecutionEngine {
             _ => None, // Other order types not yet implemented
         }
     }
-    
+
     /// Fill a market order with slippage
     fn market_order_fill(
         pending: &PendingOrder,
@@ -417,7 +439,7 @@ impl ExecutionEngine {
         slippage_ticks: i64,
     ) -> Option<(Price, Quantity)> {
         let (best_bid, best_ask) = book.bbo();
-        
+
         match pending.order.side {
             OrderSide::Buy | OrderSide::BuyCover => {
                 // Buying - start at ask and add slippage
@@ -437,7 +459,7 @@ impl ExecutionEngine {
             }
         }
     }
-    
+
     /// Fill a limit order if price is touched
     fn limit_order_fill(
         pending: &PendingOrder,
@@ -447,7 +469,7 @@ impl ExecutionEngine {
     ) -> Option<(Price, Quantity)> {
         let limit_price = pending.order.price?;
         let (best_bid, best_ask) = book.bbo();
-        
+
         match pending.order.side {
             OrderSide::Buy | OrderSide::BuyCover => {
                 // Buy limit - check if ask <= limit price
@@ -481,14 +503,14 @@ impl ExecutionEngine {
             }
         }
     }
-    
+
     /// Determine if a maker order should fill (simple probability model)
     fn should_fill_maker_order(fill_prob: f64) -> bool {
         // In production, use proper random number generator
         // For now, use a simple threshold
         fill_prob > 0.5
     }
-    
+
     /// Check if order should expire based on time in force
     fn should_expire_order(pending: &PendingOrder, current_time: u64) -> bool {
         match pending.order.time_in_force {
@@ -497,8 +519,9 @@ impl ExecutionEngine {
                 current_time > pending.active_time && pending.filled_quantity.as_u32() == 0
             }
             TimeInForce::FOK => {
-                // Fill or kill - expire if not completely filled immediately  
-                current_time > pending.active_time && pending.filled_quantity.as_u32() < pending.order.quantity.as_u32()
+                // Fill or kill - expire if not completely filled immediately
+                current_time > pending.active_time
+                    && pending.filled_quantity.as_u32() < pending.order.quantity.as_u32()
             }
             TimeInForce::Day => {
                 // Day order - would expire at end of day
@@ -511,7 +534,7 @@ impl ExecutionEngine {
             }
         }
     }
-    
+
     /// Get all pending orders for a strategy
     pub fn get_pending_orders(&self, strategy_id: &str) -> Vec<&PendingOrder> {
         self.pending_orders
@@ -519,7 +542,7 @@ impl ExecutionEngine {
             .filter(|order| order.strategy_id == strategy_id)
             .collect()
     }
-    
+
     /// Get order status
     pub fn get_order_status(&self, order_id: OrderId) -> Option<OrderStatus> {
         self.pending_orders.get(&order_id).map(|o| o.status)
@@ -531,22 +554,22 @@ mod tests {
     use super::*;
     use crate::strategy::output::OrderType;
     use std::collections::HashMap;
-    
+
     #[test]
     fn test_latency_models() {
         let fixed = LatencyModel::Fixed(100);
         assert_eq!(fixed.calculate(&Quantity::new(10)), 100);
-        
-        let size_dependent = LatencyModel::SizeDependent { 
-            base: 50, 
-            per_unit: 2.0 
+
+        let size_dependent = LatencyModel::SizeDependent {
+            base: 50,
+            per_unit: 2.0,
         };
         assert_eq!(size_dependent.calculate(&Quantity::new(10)), 70);
-        
+
         let zero = LatencyModel::Zero;
         assert_eq!(zero.calculate(&Quantity::new(100)), 0);
     }
-    
+
     #[test]
     fn test_order_submission() {
         let market_state = Arc::new(RwLock::new(MarketStateManager::new()));
@@ -555,7 +578,7 @@ mod tests {
             FillModel::Optimistic,
             market_state,
         );
-        
+
         let order = OrderRequest {
             strategy_id: "test_strategy".to_string(),
             instrument_id: 1,
@@ -567,25 +590,22 @@ mod tests {
             client_order_id: None,
             tags: HashMap::new(),
         };
-        
+
         let order_id = engine.submit_order(order, "test_strategy".to_string(), 1000);
         assert_eq!(order_id, 1);
         assert_eq!(engine.pending_orders.len(), 1);
-        
+
         // Check order is pending
         let status = engine.get_order_status(order_id);
         assert_eq!(status, Some(OrderStatus::Accepted));
     }
-    
+
     #[test]
     fn test_order_cancellation() {
         let market_state = Arc::new(RwLock::new(MarketStateManager::new()));
-        let mut engine = ExecutionEngine::new(
-            LatencyModel::Zero,
-            FillModel::Optimistic,
-            market_state,
-        );
-        
+        let mut engine =
+            ExecutionEngine::new(LatencyModel::Zero, FillModel::Optimistic, market_state);
+
         let order = OrderRequest {
             strategy_id: "test_strategy".to_string(),
             instrument_id: 1,
@@ -597,14 +617,14 @@ mod tests {
             client_order_id: None,
             tags: HashMap::new(),
         };
-        
+
         let order_id = engine.submit_order(order, "test_strategy".to_string(), 1000);
-        
+
         // Cancel the order
         let update = engine.cancel_order(order_id, 1100);
         assert!(update.is_some());
         assert_eq!(update.unwrap().status, OrderStatus::Cancelled);
-        
+
         // Order should be removed
         assert!(engine.get_order_status(order_id).is_none());
     }

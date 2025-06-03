@@ -1,7 +1,7 @@
 //! Backtest event types
 
-use crate::core::types::{InstrumentId, Price, Quantity, OrderId};
 use crate::core::Side;
+use crate::core::types::{InstrumentId, OrderId, Price, Quantity};
 use crate::market_data::events::MarketEvent;
 use crate::strategy::StrategyId;
 
@@ -139,7 +139,7 @@ impl BacktestEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_fill_total_cost() {
         let fill = FillEvent {
@@ -154,20 +154,20 @@ mod tests {
             commission: 1.0,
             is_maker: true,
         };
-        
+
         // Buy 10 @ 100 = 1000 + 1 commission = 1001
         assert_eq!(fill.total_cost(), 1001.0);
-        
+
         // Sell side
         let sell_fill = FillEvent {
             side: Side::Ask,
             ..fill
         };
-        
+
         // Sell 10 @ 100 = 1000 - 1 commission = 999
         assert_eq!(sell_fill.total_cost(), 999.0);
     }
-    
+
     #[test]
     fn test_event_priority() {
         assert!(EventPriority::MarketData < EventPriority::OrderUpdate);

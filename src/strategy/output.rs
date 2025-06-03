@@ -1,8 +1,8 @@
 //! Strategy output types
 
-use crate::core::types::{InstrumentId, Price, Quantity, OrderId};
 use crate::core::Side;
-use crate::strategy::{OrderSide, TimeInForce, StrategyId};
+use crate::core::types::{InstrumentId, OrderId, Price, Quantity};
+use crate::strategy::{OrderSide, StrategyId, TimeInForce};
 use std::collections::HashMap;
 
 /// Order request from strategy
@@ -63,7 +63,7 @@ impl OrderRequest {
             tags: HashMap::new(),
         }
     }
-    
+
     /// Create a limit order
     pub fn limit_order(
         strategy_id: StrategyId,
@@ -84,19 +84,19 @@ impl OrderRequest {
             tags: HashMap::new(),
         }
     }
-    
+
     /// Add a tag
     pub fn with_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.tags.insert(key.into(), value.into());
         self
     }
-    
+
     /// Set time in force
     pub fn with_time_in_force(mut self, tif: TimeInForce) -> Self {
         self.time_in_force = tif;
         self
     }
-    
+
     /// Convert to core order side
     pub fn to_core_side(&self) -> Side {
         match self.side {
@@ -134,12 +134,12 @@ impl StrategyMetrics {
             timestamp,
         }
     }
-    
+
     /// Add a metric
     pub fn add(&mut self, key: impl Into<String>, value: f64) {
         self.values.insert(key.into(), value);
     }
-    
+
     /// Get a metric
     pub fn get(&self, key: &str) -> Option<f64> {
         self.values.get(key).copied()
@@ -164,7 +164,7 @@ impl StrategyOutput {
     pub fn none() -> Self {
         Self::default()
     }
-    
+
     /// Create output with a single order
     pub fn with_order(order: OrderRequest) -> Self {
         Self {
@@ -172,7 +172,7 @@ impl StrategyOutput {
             ..Default::default()
         }
     }
-    
+
     /// Create output with multiple orders
     pub fn with_orders(orders: Vec<OrderRequest>) -> Self {
         Self {
@@ -180,7 +180,7 @@ impl StrategyOutput {
             ..Default::default()
         }
     }
-    
+
     /// Create output to cancel orders
     pub fn cancel_orders(order_ids: Vec<OrderId>) -> Self {
         Self {
@@ -188,32 +188,32 @@ impl StrategyOutput {
             ..Default::default()
         }
     }
-    
+
     /// Add an order
     pub fn add_order(&mut self, order: OrderRequest) {
         self.orders.push(order);
     }
-    
+
     /// Add a cancellation
     pub fn add_cancellation(&mut self, order_id: OrderId) {
         self.cancellations.push(order_id);
     }
-    
+
     /// Add an update
     pub fn add_update(&mut self, update: OrderUpdate) {
         self.updates.push(update);
     }
-    
+
     /// Set metrics
     pub fn set_metrics(&mut self, metrics: StrategyMetrics) {
         self.metrics = Some(metrics);
     }
-    
+
     /// Check if output is empty
     pub fn is_empty(&self) -> bool {
-        self.orders.is_empty() && 
-        self.cancellations.is_empty() && 
-        self.updates.is_empty() &&
-        self.metrics.is_none()
+        self.orders.is_empty()
+            && self.cancellations.is_empty()
+            && self.updates.is_empty()
+            && self.metrics.is_none()
     }
 }
