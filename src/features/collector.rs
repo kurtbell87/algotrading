@@ -87,7 +87,7 @@ pub struct FeatureBuffer {
     /// Maximum size of the buffer
     capacity: usize,
     /// Feature vectors stored in FIFO order
-    buffer: VecDeque<FeatureVector>,
+    pub(crate) buffer: VecDeque<FeatureVector>,
 }
 
 impl FeatureBuffer {

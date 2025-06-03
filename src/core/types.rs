@@ -21,6 +21,10 @@ impl Price {
     pub fn as_f64(&self) -> f64 {
         self.0 as f64 / 1e9
     }
+    
+    pub fn from_f64(value: f64) -> Self {
+        Self((value * 1e9) as i64)
+    }
 }
 
 impl From<i64> for Price {
@@ -50,8 +54,16 @@ impl Quantity {
         Self(value)
     }
     
+    pub fn as_u32(&self) -> u32 {
+        self.0
+    }
+    
     pub fn as_f64(&self) -> f64 {
         self.0 as f64
+    }
+    
+    pub fn as_i64(&self) -> i64 {
+        self.0 as i64
     }
 }
 

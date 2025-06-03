@@ -5,8 +5,11 @@
 
 pub mod book_features;
 pub mod collector;
+pub mod context_features;
 pub mod flow_features;
 pub mod rolling_features;
+pub mod time_features;
+pub mod transformations;
 
 use crate::core::types::{InstrumentId, Price};
 use crate::core::Side;
@@ -14,9 +17,12 @@ use crate::order_book::events::OrderBookEvent;
 use std::collections::HashMap;
 
 pub use book_features::{BookFeatures, BookImbalance, SpreadMetrics, BookPressure, QueueMetrics};
+pub use collector::{FeatureCollector, FeatureVector, FeatureBuffer, Feature};
+pub use context_features::{ContextFeatures, Position as FeaturePosition, RiskLimits};
 pub use flow_features::{FlowFeatures, TradeFlowMetrics, AggressivePassiveMetrics, ArrivalRateMetrics, TradeSizeMetrics};
 pub use rolling_features::{RollingFeatures, RollingWindow, WindowType};
-pub use collector::{FeatureCollector, FeatureVector, FeatureBuffer, Feature};
+pub use time_features::{TimeFeatures, TradingSession, SessionConfig};
+pub use transformations::{FeatureScaler, ScalingMethod, FeatureEngineer, FeatureValidator, ValidationReport};
 
 /// Configuration for feature extraction
 #[derive(Debug, Clone)]
@@ -29,6 +35,10 @@ pub struct FeatureConfig {
     pub enable_flow_features: bool,
     /// Whether to calculate rolling features
     pub enable_rolling_features: bool,
+    /// Whether to calculate time-based features
+    pub enable_time_features: bool,
+    /// Whether to calculate context features
+    pub enable_context_features: bool,
 }
 
 impl Default for FeatureConfig {
@@ -38,8 +48,20 @@ impl Default for FeatureConfig {
             rolling_window_us: 60_000_000, // 1 minute
             enable_flow_features: true,
             enable_rolling_features: true,
+            enable_time_features: true,
+            enable_context_features: true,
         }
     }
+}
+
+/// Strategy context for feature extraction
+pub struct StrategyContext {
+    /// Current position
+    pub position: FeaturePosition,
+    /// Current market price
+    pub current_price: Price,
+    /// Risk limits
+    pub risk_limits: RiskLimits,
 }
 
 /// Main feature extractor that coordinates all feature modules
@@ -48,16 +70,26 @@ pub struct FeatureExtractor {
     book_features: HashMap<InstrumentId, BookFeatures>,
     flow_features: HashMap<InstrumentId, FlowFeatures>,
     rolling_features: HashMap<InstrumentId, RollingFeatures>,
+    time_features: Option<TimeFeatures>,
+    context_features: HashMap<InstrumentId, ContextFeatures>,
     collector: FeatureCollector,
 }
 
 impl FeatureExtractor {
     pub fn new(config: FeatureConfig) -> Self {
+        let time_features = if config.enable_time_features {
+            Some(TimeFeatures::new(SessionConfig::default()))
+        } else {
+            None
+        };
+        
         Self {
             config: config.clone(),
             book_features: HashMap::new(),
             flow_features: HashMap::new(),
             rolling_features: HashMap::new(),
+            time_features,
+            context_features: HashMap::new(),
             collector: FeatureCollector::new(),
         }
     }
@@ -82,6 +114,13 @@ impl FeatureExtractor {
             .entry(instrument_id)
             .or_insert_with(|| RollingFeatures::new(self.config.rolling_window_us))
     }
+    
+    /// Get or create context features for an instrument
+    fn get_context_features(&mut self, instrument_id: InstrumentId, risk_limits: RiskLimits) -> &mut ContextFeatures {
+        self.context_features
+            .entry(instrument_id)
+            .or_insert_with(|| ContextFeatures::new(risk_limits))
+    }
 
     /// Extract all features for a given instrument at current state
     pub fn extract_features(&mut self, instrument_id: InstrumentId, timestamp: u64) -> FeatureVector {
@@ -105,7 +144,38 @@ impl FeatureExtractor {
                 rolling_feat.add_to_vector(&mut features);
             }
         }
+        
+        // Extract time features
+        if self.config.enable_time_features {
+            if let Some(ref time_feat) = self.time_features {
+                time_feat.add_to_vector(&mut features, instrument_id, timestamp);
+            }
+        }
 
+        features
+    }
+    
+    /// Extract features with strategy context
+    pub fn extract_with_context(
+        &mut self,
+        instrument_id: InstrumentId,
+        timestamp: u64,
+        context: &StrategyContext,
+    ) -> FeatureVector {
+        // Extract all standard features
+        let mut features = self.extract_features(instrument_id, timestamp);
+        
+        // Add context features if enabled
+        if self.config.enable_context_features {
+            let context_feat = self.get_context_features(instrument_id, context.risk_limits.clone());
+            
+            // Update context features with current position
+            context_feat.position = context.position.clone();
+            
+            // Add context features to vector
+            context_feat.add_to_vector(&mut features, context.current_price, timestamp);
+        }
+        
         features
     }
 
@@ -117,6 +187,31 @@ impl FeatureExtractor {
     /// Get mutable feature collector
     pub fn collector_mut(&mut self) -> &mut FeatureCollector {
         &mut self.collector
+    }
+    
+    /// Get time features (if enabled)
+    pub fn time_features(&self) -> Option<&TimeFeatures> {
+        self.time_features.as_ref()
+    }
+    
+    /// Get mutable time features
+    pub fn time_features_mut(&mut self) -> Option<&mut TimeFeatures> {
+        self.time_features.as_mut()
+    }
+    
+    /// Update context features from a fill event
+    pub fn update_context_from_fill(
+        &mut self,
+        instrument_id: InstrumentId,
+        fill_price: Price,
+        fill_quantity: i64,
+        timestamp: u64,
+        risk_limits: RiskLimits,
+    ) {
+        if self.config.enable_context_features {
+            let context_feat = self.get_context_features(instrument_id, risk_limits);
+            context_feat.update_position(fill_price, fill_quantity, timestamp);
+        }
     }
 }
 
