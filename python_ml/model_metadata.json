@@ -1,0 +1,14 @@
+{
+  "model_type": "RandomForestClassifier",
+  "feature_names": [
+    "mid_price",
+    "spread",
+    "bid_size",
+    "ask_size",
+    "volume_imbalance"
+  ],
+  "accuracy": 0.5295,
+  "n_features": 5,
+  "training_samples": 8000,
+  "description": "Random Forest model for predicting future price direction"
+}
