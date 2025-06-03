@@ -142,7 +142,7 @@ fn test_full_backtest(file_path: &PathBuf) -> f64 {
         },
     );
 
-    engine.add_strategy(Box::new(strategy));
+    let _ = engine.add_strategy(Box::new(strategy));
 
     // Run backtest and measure time
     let processing_start = Instant::now();

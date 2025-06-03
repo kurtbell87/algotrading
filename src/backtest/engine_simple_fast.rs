@@ -11,12 +11,10 @@ use crate::backtest::position::PositionManager;
 use crate::backtest::{BacktestConfig, EngineReport, PerformanceMetrics};
 use crate::core::MarketUpdate;
 use crate::core::traits::MarketDataSource;
-use crate::core::types::InstrumentId;
 use crate::features::{FeaturePosition, RiskLimits};
 use crate::market_data::FileReader;
 use crate::market_data::events::{MarketEvent, TradeEvent};
 use crate::strategy::{Strategy, StrategyContext};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
@@ -27,8 +25,8 @@ pub struct SimpleFastEngine {
     config: BacktestConfig,
     strategies: Vec<(Box<dyn Strategy>, StrategyContext)>,
     market_state: Arc<RwLock<MarketStateManager>>,
-    position_manager: PositionManager,
-    metrics_collector: MetricsCollector,
+    _position_manager: PositionManager,
+    _metrics_collector: MetricsCollector,
     current_time: u64,
     events_processed: usize,
     // Pre-allocated buffers
@@ -41,8 +39,8 @@ impl SimpleFastEngine {
 
         Self {
             market_state: market_state.clone(),
-            position_manager: PositionManager::new(RiskLimits::default()),
-            metrics_collector: MetricsCollector::new(config.initial_capital),
+            _position_manager: PositionManager::new(RiskLimits::default()),
+            _metrics_collector: MetricsCollector::new(config.initial_capital),
             config,
             strategies: Vec::new(),
             current_time: 0,
@@ -83,7 +81,7 @@ impl SimpleFastEngine {
             self.process_file_fast(file_path)?;
         }
 
-        let elapsed = start_time.elapsed();
+        let _elapsed = start_time.elapsed();
 
         // Generate simple report
         Ok(EngineReport {
@@ -140,7 +138,7 @@ impl SimpleFastEngine {
     fn process_batch_fast(&mut self, start: usize, end: usize) -> Result<(), String> {
         // Update market state for batch (single lock)
         {
-            let mut market_state = self.market_state.write().unwrap();
+            let _market_state = self.market_state.write().unwrap();
             for i in start..end {
                 let update = &self.event_buffer[i];
                 // Simple market state update

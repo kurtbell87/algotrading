@@ -932,7 +932,7 @@ mod tests {
 
         // Should contain expected metric values
         // Z-score = (103 - 100) / 2.5 = 1.2
-        let expected_z_score = (103.0 - 100.0) / 2.5;
+        let _expected_z_score = (103.0 - 100.0) / 2.5;
 
         // Verify metrics (assuming the implementation adds these metrics)
         // Note: This depends on the actual metrics implementation

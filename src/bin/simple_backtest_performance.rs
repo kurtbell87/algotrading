@@ -36,7 +36,7 @@ fn main() {
 }
 
 fn test_original(file: &PathBuf) -> f64 {
-    let start = Instant::now();
+    let _start = Instant::now();
 
     // Create engine
     let config = BacktestConfig::default();
@@ -67,7 +67,7 @@ fn test_original(file: &PathBuf) -> f64 {
 }
 
 fn test_simple_fast(file: &PathBuf) -> f64 {
-    let start = Instant::now();
+    let _start = Instant::now();
 
     // Create fast engine
     let config = BacktestConfig::default();

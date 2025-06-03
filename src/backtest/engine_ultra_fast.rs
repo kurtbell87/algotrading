@@ -2,10 +2,8 @@
 //!
 //! Stripped down version with minimal features for maximum performance
 
-use crate::backtest::{BacktestConfig, PerformanceMetrics};
 use crate::core::MarketUpdate;
 use crate::core::traits::MarketDataSource;
-use crate::core::types::InstrumentId;
 use crate::features::{FeaturePosition, RiskLimits};
 use crate::market_data::FileReader;
 use crate::market_data::events::{MarketEvent, TradeEvent};

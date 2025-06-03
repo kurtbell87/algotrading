@@ -111,6 +111,8 @@ fn create_sample_market_data() -> Vec<MarketEvent> {
                 ask_price: Some(ask_price),
                 bid_quantity: Some(Quantity::from((100 + (rand::random::<u32>() % 200)) as u32)),
                 ask_quantity: Some(Quantity::from((100 + (rand::random::<u32>() % 200)) as u32)),
+                bid_order_count: Some(2 + (rand::random::<u32>() % 5)),
+                ask_order_count: Some(2 + (rand::random::<u32>() % 5)),
                 timestamp: timestamp + 100,
             };
 
@@ -242,10 +244,12 @@ fn run_ml_strategy_demo() -> Result<(), Box<dyn std::error::Error>> {
 
 fn main() {
     // Set up Python environment
-    std::env::set_var(
-        "PYO3_PYTHON",
-        "/Users/brandonbell/LOCAL_DEV/algotrading/python_ml/.venv/bin/python",
-    );
+    unsafe {
+        std::env::set_var(
+            "PYO3_PYTHON",
+            "/Users/brandonbell/LOCAL_DEV/algotrading/python_ml/.venv/bin/python",
+        );
+    }
 
     match run_ml_strategy_demo() {
         Ok(()) => println!("\nDemo completed successfully!"),
@@ -266,13 +270,34 @@ mod rand {
 
     pub fn random<T>() -> T
     where
-        T: From<f64>,
+        T: RandomValue,
     {
         RNG_STATE.with(|state| {
             let mut s = state.borrow_mut();
             *s = s.wrapping_mul(1103515245).wrapping_add(12345);
-            let normalized = (*s as f64) / (u64::MAX as f64);
-            T::from(normalized)
+            T::from_u64(*s)
         })
+    }
+
+    pub trait RandomValue {
+        fn from_u64(value: u64) -> Self;
+    }
+
+    impl RandomValue for f64 {
+        fn from_u64(value: u64) -> Self {
+            (value as f64) / (u64::MAX as f64)
+        }
+    }
+
+    impl RandomValue for i64 {
+        fn from_u64(value: u64) -> Self {
+            (value % (i64::MAX as u64)) as i64
+        }
+    }
+
+    impl RandomValue for u32 {
+        fn from_u64(value: u64) -> Self {
+            (value % (u32::MAX as u64)) as u32
+        }
     }
 }

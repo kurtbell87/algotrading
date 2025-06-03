@@ -101,7 +101,7 @@ pub struct MetricsCollector {
 /// Open position tracking
 #[derive(Debug, Clone)]
 struct OpenPosition {
-    strategy_id: StrategyId,
+    _strategy_id: StrategyId,
     entry_price: Price,
     quantity: i64,
     entry_time: u64,
@@ -111,11 +111,11 @@ struct OpenPosition {
 /// Daily return record
 #[derive(Debug, Clone)]
 struct DailyReturn {
-    date: u64, // Start of day timestamp
-    starting_equity: f64,
-    ending_equity: f64,
+    _date: u64, // Start of day timestamp
+    _starting_equity: f64,
+    _ending_equity: f64,
     return_pct: f64,
-    trades_count: usize,
+    _trades_count: usize,
 }
 
 /// Equity curve point
@@ -164,7 +164,7 @@ impl MetricsCollector {
                 .open_positions
                 .entry(fill.instrument_id)
                 .or_insert_with(|| OpenPosition {
-                    strategy_id: fill.strategy_id.clone(),
+                    _strategy_id: fill.strategy_id.clone(),
                     entry_price: fill.price,
                     quantity: 0,
                     entry_time: fill.timestamp,
@@ -284,11 +284,11 @@ impl MetricsCollector {
             .count();
 
         self.daily_returns.push_back(DailyReturn {
-            date: self.last_daily_reset,
-            starting_equity,
-            ending_equity,
+            _date: self.last_daily_reset,
+            _starting_equity: starting_equity,
+            _ending_equity: ending_equity,
             return_pct,
-            trades_count,
+            _trades_count: trades_count,
         });
 
         // Keep only last year of daily returns

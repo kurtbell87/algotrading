@@ -134,7 +134,7 @@ fn test_fast_engine(files: &[PathBuf], strategy_config: &MeanReversionConfig) ->
     let processing_start = Instant::now();
     match engine.run(files) {
         Ok(report) => {
-            let processing_time = processing_start.elapsed();
+            let _processing_time = processing_start.elapsed();
             let total_time = start.elapsed();
 
             report.print_summary();

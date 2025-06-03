@@ -7,18 +7,18 @@
 //! 4. Reduced lock contention
 
 use crate::backtest::events::FillEvent;
-use crate::backtest::execution::{ExecutionEngine, FillModel, LatencyModel};
+use crate::backtest::execution::ExecutionEngine;
 use crate::backtest::market_state::MarketStateManager;
 use crate::backtest::metrics::MetricsCollector;
 use crate::backtest::position::PositionManager;
-use crate::backtest::{BacktestConfig, EngineReport, PerformanceMetrics};
+use crate::backtest::{BacktestConfig, EngineReport};
 use crate::core::traits::MarketDataSource;
 use crate::core::types::{InstrumentId, Price, Quantity};
 use crate::core::{MarketUpdate, Side};
 use crate::features::{FeaturePosition, RiskLimits};
 use crate::market_data::FileReader;
 use crate::market_data::events::{MarketEvent, TradeEvent};
-use crate::strategy::{OrderRequest, Strategy, StrategyContext, StrategyOutput};
+use crate::strategy::{OrderRequest, Strategy, StrategyContext};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -286,7 +286,7 @@ impl OptimizedEngineV2 {
         self.order_buffer.clear();
 
         // Process each event
-        for (i, event) in self.market_event_batch.iter().enumerate() {
+        for (_i, event) in self.market_event_batch.iter().enumerate() {
             let timestamp = match event {
                 MarketEvent::Trade(t) => t.timestamp,
                 _ => self.current_time,
