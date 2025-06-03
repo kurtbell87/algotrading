@@ -1,5 +1,7 @@
 //! Python bindings for core Rust types
 
+#![allow(unsafe_op_in_unsafe_fn)]
+
 use crate::core::Side;
 use crate::core::types::{InstrumentId, Price, Quantity};
 use crate::strategy::OrderSide;

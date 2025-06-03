@@ -244,7 +244,7 @@ impl FastBacktestEngine {
     #[inline]
     fn update_market_state_fast(
         &self,
-        market_state: &mut MarketStateManager,
+        _market_state: &mut MarketStateManager,
         update: &MarketUpdate,
     ) {
         // Direct update without intermediate conversion

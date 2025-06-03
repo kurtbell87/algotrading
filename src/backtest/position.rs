@@ -376,7 +376,7 @@ pub struct PositionManager {
     /// Position trackers by strategy
     strategy_trackers: HashMap<StrategyId, PositionTracker>,
     /// Global risk limits
-    global_risk_limits: RiskLimits,
+    _global_risk_limits: RiskLimits,
     /// Current market prices
     market_prices: HashMap<InstrumentId, Price>,
 }
@@ -386,7 +386,7 @@ impl PositionManager {
     pub fn new(global_risk_limits: RiskLimits) -> Self {
         Self {
             strategy_trackers: HashMap::new(),
-            global_risk_limits,
+            _global_risk_limits: global_risk_limits,
             market_prices: HashMap::new(),
         }
     }

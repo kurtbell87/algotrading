@@ -5,7 +5,6 @@
 
 use crate::backtest::market_state::MarketStateManager;
 use crate::core::MarketUpdate;
-use crate::market_data::events::MarketEvent;
 use std::sync::{Arc, RwLock};
 
 /// Batch processor for market updates
@@ -62,16 +61,16 @@ impl BatchMarketUpdater {
 
     /// Update market state for entire batch (single lock acquisition)
     pub fn update_batch(&self, updates: &[MarketUpdate]) {
-        let mut state = self.market_state.write().unwrap();
+        let _state = self.market_state.write().unwrap();
 
         for update in updates {
             // Direct update without intermediate conversion
             match update {
-                MarketUpdate::Trade(trade) => {
+                MarketUpdate::Trade(_trade) => {
                     // Update last trade price
                     // In real implementation, update order book
                 }
-                MarketUpdate::OrderBook(book_update) => {
+                MarketUpdate::OrderBook(_book_update) => {
                     // Update order book levels
                 }
             }

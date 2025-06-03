@@ -52,7 +52,7 @@ pub trait PythonModel: Send + Sync {
 pub struct SklearnModel {
     model: PyObject,
     feature_names: Vec<String>,
-    model_type: String,
+    _model_type: String,
     metadata: HashMap<String, String>,
 }
 
@@ -110,7 +110,7 @@ impl SklearnModel {
             Ok(Self {
                 model: model.to_object(py),
                 feature_names,
-                model_type,
+                _model_type: model_type,
                 metadata,
             })
         })
@@ -144,7 +144,7 @@ impl SklearnModel {
             Ok(Self {
                 model,
                 feature_names,
-                model_type,
+                _model_type: model_type,
                 metadata,
             })
         })

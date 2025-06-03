@@ -837,7 +837,7 @@ mod tests {
         assert!(strategy.volume_confirms());
 
         // Test with volume confirmation disabled
-        let mut strategy2 = TrendFollowingStrategy::new(
+        let strategy2 = TrendFollowingStrategy::new(
             "volume_test2".to_string(),
             1,
             TrendFollowingConfig {
