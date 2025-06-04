@@ -7,7 +7,7 @@
 //! - Order state features
 
 use crate::core::types::Price;
-use crate::features::collector::FeatureVector;
+use crate::features::FeatureVector;
 use std::collections::VecDeque;
 
 /// Position state for feature calculation

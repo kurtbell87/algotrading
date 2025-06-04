@@ -7,7 +7,7 @@
 //! - Trade size distributions
 
 use crate::core::types::{Price, Quantity};
-use crate::features::collector::FeatureVector;
+use crate::features::FeatureVector;
 use std::collections::VecDeque;
 
 /// Time window for flow calculations (microseconds)

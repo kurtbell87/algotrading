@@ -7,7 +7,7 @@
 //! - Session volume percentiles
 
 use crate::core::types::{InstrumentId, Quantity};
-use crate::features::collector::FeatureVector;
+use crate::features::FeatureVector;
 use chrono::{DateTime, Datelike, Timelike, Utc, Weekday};
 use std::collections::HashMap;
 

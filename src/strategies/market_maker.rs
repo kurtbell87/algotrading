@@ -10,6 +10,7 @@ use crate::strategy::{
     OrderSide, Strategy, StrategyConfig, StrategyContext, StrategyError, StrategyOutput,
     TimeInForce,
 };
+use crate::strategies::utils::get_tick_size;
 use std::collections::VecDeque;
 
 /// Configuration for market making strategy
@@ -155,7 +156,7 @@ impl MarketMakerStrategy {
     fn calculate_optimal_quotes(&self, mid_price: f64, current_time: u64) -> (Price, Price) {
         let vol = self.volatility.unwrap_or(0.01); // Default 1% volatility
         let gamma = self.mm_config.risk_aversion;
-        let tick_size = 25; // TODO: Get from instrument config
+        let tick_size = get_tick_size(self.config.instruments[0]);
 
         // Calculate time remaining (T - t)
         let time_remaining = if let Some(start) = self.start_time {
@@ -201,7 +202,7 @@ impl MarketMakerStrategy {
 
     /// Check if we should update orders
     fn should_update_orders(&self, new_bid: Price, new_ask: Price) -> bool {
-        let tick_size = 25; // TODO: Get from instrument config
+        let tick_size = get_tick_size(self.config.instruments[0]);
         let threshold = self.mm_config.update_threshold_ticks * tick_size;
 
         // Check buy order

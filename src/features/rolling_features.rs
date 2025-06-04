@@ -10,7 +10,7 @@
 //! All features update based on market events, not arbitrary time intervals.
 
 use crate::core::types::{Price, Quantity};
-use crate::features::collector::FeatureVector;
+use crate::features::FeatureVector;
 use std::collections::VecDeque;
 
 /// Window type for event-based calculations

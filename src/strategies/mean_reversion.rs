@@ -9,6 +9,7 @@ use crate::strategy::output::{OrderRequest, StrategyMetrics};
 use crate::strategy::{
     OrderSide, Strategy, StrategyConfig, StrategyContext, StrategyError, StrategyOutput,
 };
+use crate::strategies::utils::{calculate_mid_price, get_tick_size};
 
 /// Configuration for mean reversion strategy
 #[derive(Debug, Clone)]
@@ -180,7 +181,7 @@ impl MeanReversionStrategy {
 
         if self.mr_config.use_limit_orders {
             // Place limit order with offset
-            let tick_size = 25; // TODO: Get from instrument config
+            let tick_size = get_tick_size(instrument_id);
             let offset = self.mr_config.limit_order_offset_ticks * tick_size;
 
             let limit_price = match side {
@@ -236,7 +237,7 @@ impl Strategy for MeanReversionStrategy {
                     // Use mid price
                     match (bbo.bid_price, bbo.ask_price) {
                         (Some(bid), Some(ask)) => {
-                            Some(Price::from_f64((bid.as_f64() + ask.as_f64()) / 2.0))
+                            Some(calculate_mid_price(bid, ask))
                         }
                         _ => None,
                     }

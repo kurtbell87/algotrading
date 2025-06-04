@@ -9,6 +9,7 @@ use crate::strategy::output::{OrderRequest, StrategyMetrics};
 use crate::strategy::{
     OrderSide, Strategy, StrategyConfig, StrategyContext, StrategyError, StrategyOutput,
 };
+use crate::strategies::utils::{calculate_mid_price, get_tick_size};
 use std::collections::VecDeque;
 
 /// Configuration for trend following strategy
@@ -256,7 +257,7 @@ impl TrendFollowingStrategy {
     /// Calculate stop loss and take profit levels
     fn calculate_exit_levels(&self, entry_price: Price, is_long: bool) -> (Price, Price) {
         let atr = self.atr.unwrap_or(entry_price.as_f64() * 0.01); // Default 1% if no ATR
-        let tick_size = 25; // TODO: Get from instrument config
+        let tick_size = get_tick_size(self.config.instruments[0]);
 
         let stop_distance = (atr * self.tf_config.stop_loss_atr_multiplier) as i64;
         let profit_distance = (atr * self.tf_config.take_profit_atr_multiplier) as i64;
@@ -450,7 +451,7 @@ impl Strategy for TrendFollowingStrategy {
                     // Use mid price
                     match (bbo.bid_price, bbo.ask_price) {
                         (Some(bid), Some(ask)) => {
-                            let mid = Price::from_f64((bid.as_f64() + ask.as_f64()) / 2.0);
+                            let mid = calculate_mid_price(bid, ask);
                             Some((mid, 0)) // No volume for BBO
                         }
                         _ => None,

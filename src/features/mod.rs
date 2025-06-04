@@ -4,7 +4,6 @@
 //! for use in machine learning models and trading strategies.
 
 pub mod book_features;
-pub mod collector;
 pub mod context_features;
 pub mod flow_features;
 pub mod rolling_features;
@@ -16,8 +15,53 @@ use crate::core::types::{InstrumentId, Price};
 use crate::order_book::events::OrderBookEvent;
 use std::collections::HashMap;
 
+/// Simple feature vector for ML models
+#[derive(Debug, Clone)]
+pub struct FeatureVector {
+    pub instrument_id: InstrumentId,
+    pub timestamp: u64,
+    features: HashMap<String, f64>,
+}
+
+impl FeatureVector {
+    pub fn new(instrument_id: InstrumentId, timestamp: u64) -> Self {
+        Self {
+            instrument_id,
+            timestamp,
+            features: HashMap::new(),
+        }
+    }
+    
+    pub fn insert(&mut self, name: &str, value: f64) {
+        self.features.insert(name.to_string(), value);
+    }
+    
+    pub fn add(&mut self, name: &str, value: f64) {
+        self.features.insert(name.to_string(), value);
+    }
+    
+    pub fn get(&self, name: &str) -> Option<f64> {
+        self.features.get(name).copied()
+    }
+    
+    pub fn len(&self) -> usize {
+        self.features.len()
+    }
+    
+    pub fn is_empty(&self) -> bool {
+        self.features.is_empty()
+    }
+    
+    pub fn feature_names(&self) -> Vec<&str> {
+        self.features.keys().map(|s| s.as_str()).collect()
+    }
+    
+    pub fn iter(&self) -> impl Iterator<Item = (&str, f64)> + '_ {
+        self.features.iter().map(|(k, v)| (k.as_str(), *v))
+    }
+}
+
 pub use book_features::{BookFeatures, BookImbalance, BookPressure, QueueMetrics, SpreadMetrics};
-pub use collector::{Feature, FeatureBuffer, FeatureCollector, FeatureVector};
 pub use context_features::{ContextFeatures, Position as FeaturePosition, RiskLimits};
 pub use flow_features::{
     AggressivePassiveMetrics, ArrivalRateMetrics, FlowFeatures, TradeFlowMetrics, TradeSizeMetrics,
@@ -76,7 +120,6 @@ pub struct FeatureExtractor {
     rolling_features: HashMap<InstrumentId, RollingFeatures>,
     time_features: Option<TimeFeatures>,
     context_features: HashMap<InstrumentId, ContextFeatures>,
-    collector: FeatureCollector,
 }
 
 impl FeatureExtractor {
@@ -94,7 +137,6 @@ impl FeatureExtractor {
             rolling_features: HashMap::new(),
             time_features,
             context_features: HashMap::new(),
-            collector: FeatureCollector::new(),
         }
     }
 
@@ -192,15 +234,6 @@ impl FeatureExtractor {
         features
     }
 
-    /// Get the feature collector for accessing historical features
-    pub fn collector(&self) -> &FeatureCollector {
-        &self.collector
-    }
-
-    /// Get mutable feature collector
-    pub fn collector_mut(&mut self) -> &mut FeatureCollector {
-        &mut self.collector
-    }
 
     /// Get time features (if enabled)
     pub fn time_features(&self) -> Option<&TimeFeatures> {
@@ -284,9 +317,8 @@ impl FeatureExtractor {
                     }
                 }
 
-                // Extract and collect features after BBO changes
-                let feature_vector = self.extract_features(instrument_id, timestamp);
-                self.collector.collect(feature_vector);
+                // Extract features after BBO changes
+                let _feature_vector = self.extract_features(instrument_id, timestamp);
             }
 
             OrderBookEvent::OrderAdded {
@@ -353,8 +385,6 @@ mod tests {
         assert!(extractor.book_features.contains_key(&instrument_id));
         assert!(extractor.rolling_features.contains_key(&instrument_id));
 
-        // Verify features were collected
-        assert_eq!(extractor.collector().len(), 1);
     }
 
     #[test]

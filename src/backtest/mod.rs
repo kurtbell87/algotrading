@@ -4,15 +4,9 @@
 //! for evaluating trading strategies on historical data.
 
 pub mod engine;
-pub mod engine_batch;
-pub mod engine_fast;
-pub mod engine_optimized_v2;
-pub mod engine_simple_fast;
-pub mod engine_ultra_fast;
 pub mod events;
-pub mod market_state;
-// pub mod engine_optimized; // Temporarily disabled due to compilation errors
 pub mod execution;
+pub mod market_state;
 pub mod metrics;
 pub mod position;
 

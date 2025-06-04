@@ -8,7 +8,7 @@
 //! - Queue position estimates
 
 use crate::core::types::{OrderId, Price, Quantity};
-use crate::features::collector::FeatureVector;
+use crate::features::FeatureVector;
 use crate::order_book::events::OrderBookEvent;
 use std::collections::HashMap;
 
