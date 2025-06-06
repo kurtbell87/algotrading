@@ -85,6 +85,23 @@ fn top_of_book_clears() {
 }
 
 #[test]
+fn top_of_book_clears_undef_price() {
+    use databento::dbn::UNDEF_PRICE;
+
+    let mut book = Book::default();
+    book.apply(msg(1, Side::Ask, Action::Add, 110, 7));
+
+    let mut flags = FlagSet::empty();
+    flags.set_tob();
+    let mut tob_msg = msg(0, Side::Ask, Action::Add, UNDEF_PRICE, 0);
+    tob_msg.flags = flags;
+    book.apply(tob_msg);
+
+    assert!(book.asks.is_empty());
+    assert!(book.bbo().1.is_none());
+}
+
+#[test]
 fn market_aggregated_bbo() {
     let mut market = Market::default();
     let mut m1 = msg(1, Side::Bid, Action::Add, 100, 5);
