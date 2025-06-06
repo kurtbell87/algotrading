@@ -115,22 +115,25 @@ impl Book {
         };
         let new_side = mbo.side().unwrap();
         let new_px   = mbo.price;
-        self.orders_by_id.insert(mbo.order_id, (new_side, new_px));
 
-        let Some(level) = self.side_levels_mut(old_side).get_mut(&old_px) else {
-            return self.add(mbo);
-        };
-        let Some(idx)   = level.iter().position(|o| o.order_id == mbo.order_id) else {
-            return self.add(mbo);
-        };
+        if let Some(level) = self.side_levels_mut(old_side).get_mut(&old_px) {
+            if let Some(idx) = level.iter().position(|o| o.order_id == mbo.order_id) {
+                let keep_priority = old_px == new_px && mbo.size >= level[idx].size;
+                level[idx] = mbo.clone();
+                if keep_priority {
+                    self.orders_by_id.insert(mbo.order_id, (new_side, new_px));
+                    return;
+                }
 
-        let keep_priority = old_px == new_px && mbo.size >= level[idx].size;
-        level[idx] = mbo.clone();
-        if keep_priority { return; }
+                let order = level.remove(idx);
+                if level.is_empty() { self.side_levels_mut(old_side).remove(&old_px); }
+                self.orders_by_id.insert(mbo.order_id, (new_side, new_px));
+                self.side_levels_mut(new_side).entry(new_px).or_default().push(order);
+                return;
+            }
+        }
 
-        let order = level.remove(idx);
-        if level.is_empty() { self.side_levels_mut(old_side).remove(&old_px); }
-        self.side_levels_mut(new_side).entry(new_px).or_default().push(order);
+        self.add(mbo);
     }
 }
 
