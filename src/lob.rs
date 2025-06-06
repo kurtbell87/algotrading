@@ -242,4 +242,35 @@ impl Market {
         }
         (best_bid, best_ask)
     }
+
+    /// Aggregated depth across publishers for the given side. Levels are
+    /// combined by price and returned in book order (bids descending, asks ascending).
+    #[allow(dead_code)]
+    pub fn aggregated_depth(&self, inst: InstId, side: Side, levels: usize) -> Vec<LevelSummary> {
+        use std::collections::BTreeMap;
+        let Some(list) = self.books.get(&inst) else { return Vec::new() };
+        let mut map: BTreeMap<i64, LevelSummary> = BTreeMap::new();
+        for (_, book) in list {
+            let it: Box<dyn Iterator<Item = (&i64, &SmallVec<[MboMsg; 8]>)>> = match side {
+                Side::Bid => Box::new(book.bids.iter().rev()),
+                Side::Ask => Box::new(book.asks.iter()),
+                Side::None => Box::new(std::iter::empty()),
+            };
+            for (px, lvl) in it.take(levels) {
+                let (sz, ct) = lvl
+                    .iter()
+                    .filter(|m| !m.flags.is_tob())
+                    .fold((0, 0), |acc, m| (acc.0 + m.size, acc.1 + 1));
+                let entry = map.entry(*px).or_insert(LevelSummary { price: *px, size: 0, count: 0 });
+                entry.size += sz;
+                entry.count += ct;
+            }
+        }
+        let it: Box<dyn Iterator<Item = (&i64, &LevelSummary)>> = match side {
+            Side::Bid => Box::new(map.iter().rev()),
+            Side::Ask => Box::new(map.iter()),
+            Side::None => Box::new(std::iter::empty()),
+        };
+        it.take(levels).map(|(_, l)| l.clone()).collect()
+    }
 }
