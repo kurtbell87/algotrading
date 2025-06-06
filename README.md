@@ -93,4 +93,4 @@ snapshot.
 
 ## License
 
-[Your license here]
+MIT
