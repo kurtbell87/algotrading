@@ -100,3 +100,92 @@ fn market_aggregated_bbo() {
     let (bb, _) = market.aggregated_bbo(1);
     assert_eq!(bb.unwrap().price, 102);
 }
+
+#[test]
+fn cancel_nonexistent_noop() {
+    let mut book = Book::default();
+    book.apply(msg(1, Side::Bid, Action::Add, 100, 5));
+
+    book.apply(msg(2, Side::Bid, Action::Cancel, 100, 2));
+
+    let (bid, _) = book.bbo();
+    assert_eq!(bid.unwrap().size, 5);
+}
+
+#[test]
+fn modify_nonexistent_adds() {
+    let mut book = Book::default();
+    book.apply(msg(1, Side::Bid, Action::Modify, 100, 3));
+
+    let (bid, _) = book.bbo();
+    assert_eq!(bid.unwrap().size, 3);
+}
+
+#[test]
+fn modify_same_price_reduce_size() {
+    let mut book = Book::default();
+    book.apply(msg(1, Side::Bid, Action::Add, 100, 8));
+    book.apply(msg(1, Side::Bid, Action::Modify, 100, 5));
+
+    let (bid, _) = book.bbo();
+    assert_eq!(bid.unwrap().size, 5);
+}
+
+#[test]
+fn modify_change_side() {
+    let mut book = Book::default();
+    book.apply(msg(1, Side::Bid, Action::Add, 100, 5));
+    book.apply(msg(1, Side::Ask, Action::Modify, 101, 5));
+
+    let (_, ask) = book.bbo();
+    assert_eq!(ask.unwrap().price, 101);
+    assert!(book.bids.is_empty());
+}
+
+#[test]
+fn top_of_book_ask_clears() {
+    use databento::dbn::enums::flags;
+
+    let mut book = Book::default();
+    book.apply(msg(1, Side::Ask, Action::Add, 110, 2));
+
+    let mut flags = FlagSet::empty();
+    flags.set_tob();
+    let mut tob_msg = msg(0, Side::Ask, Action::Add, 108, 1);
+    tob_msg.flags = flags;
+    book.apply(tob_msg);
+
+    assert_eq!(book.asks.len(), 1);
+    assert_eq!(book.bbo().1.unwrap().price, 108);
+}
+
+#[test]
+fn market_aggregated_bbo_same_price() {
+    let mut market = Market::default();
+    let mut m1 = msg(1, Side::Bid, Action::Add, 100, 5);
+    m1.hd.instrument_id = 1;
+    m1.hd.publisher_id = 1;
+    market.apply(m1);
+
+    let mut m2 = msg(2, Side::Bid, Action::Add, 100, 4);
+    m2.hd.instrument_id = 1;
+    m2.hd.publisher_id = 2;
+    market.apply(m2);
+
+    let (bb, _) = market.aggregated_bbo(1);
+    let bb = bb.unwrap();
+    assert_eq!(bb.size, 9);
+    assert_eq!(bb.count, 2);
+}
+
+#[test]
+fn clear_action_resets_book() {
+    let mut book = Book::default();
+    book.apply(msg(1, Side::Bid, Action::Add, 100, 5));
+    book.apply(msg(2, Side::Ask, Action::Add, 110, 5));
+
+    book.apply(msg(0, Side::None, Action::Clear, 0, 0));
+    assert!(book.bbo().0.is_none());
+    assert!(book.bbo().1.is_none());
+}
+
