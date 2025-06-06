@@ -6,4 +6,5 @@
 //! quotes.
 //! Additional helper modules may be added over time.
 
-pub mod lob;          // that’s literally all you need
+pub mod lob;          // order book logic
+pub mod features;    // feature extraction utilities
