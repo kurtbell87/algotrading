@@ -83,6 +83,8 @@ Snapshot messages are applied the same way as live updates, typically starting
 with a `Clear` action followed by `Add` actions that rebuild the order book.
 The included unit test demonstrates clearing the book and applying orders from a
 snapshot.
+Trading strategies and feature extraction skip these messages when generating
+signals so that only real-time updates influence decisions.
 
 ## Architecture
 

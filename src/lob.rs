@@ -248,7 +248,9 @@ impl Market {
     #[allow(dead_code)]
     pub fn aggregated_depth(&self, inst: InstId, side: Side, levels: usize) -> Vec<LevelSummary> {
         use std::collections::BTreeMap;
-        let Some(list) = self.books.get(&inst) else { return Vec::new() };
+        let Some(list) = self.books.get(&inst) else {
+            return Vec::new();
+        };
         let mut map: BTreeMap<i64, LevelSummary> = BTreeMap::new();
         for (_, book) in list {
             let it: Box<dyn Iterator<Item = (&i64, &SmallVec<[MboMsg; 8]>)>> = match side {
@@ -261,7 +263,11 @@ impl Market {
                     .iter()
                     .filter(|m| !m.flags.is_tob())
                     .fold((0, 0), |acc, m| (acc.0 + m.size, acc.1 + 1));
-                let entry = map.entry(*px).or_insert(LevelSummary { price: *px, size: 0, count: 0 });
+                let entry = map.entry(*px).or_insert(LevelSummary {
+                    price: *px,
+                    size: 0,
+                    count: 0,
+                });
                 entry.size += sz;
                 entry.count += ct;
             }
