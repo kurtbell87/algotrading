@@ -46,6 +46,11 @@ impl Display for LevelSummary {
     }
 }
 
+/// Order book for a single instrument and a single publisher.
+///
+/// The book keeps `orders_by_id` in sync with the individual price
+/// levels stored in `bids` and `asks`. Each order appears exactly once
+/// in the level corresponding to its price and side.
 #[derive(Default, Debug)]
 pub struct Book {
     pub orders_by_id: OrderMap,
@@ -178,6 +183,11 @@ impl Book {
 /* ==================================================================== */
 /*  MARKET – instrument → Vec< (publisher , Book) >                      */
 /* ==================================================================== */
+/// Collection of [`Book`]s indexed by instrument identifier.
+///
+/// Each entry holds the set of books for every publisher that has sent
+/// updates for the instrument. The inner `Vec` is never empty for any
+/// key present in `books`.
 #[derive(Default, Debug)]
 pub struct Market {
     books: HashMap<InstId, Vec<(Publisher, Book)>>,
