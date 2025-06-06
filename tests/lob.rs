@@ -188,3 +188,4 @@ fn clear_action_resets_book() {
     assert!(book.bbo().0.is_none());
     assert!(book.bbo().1.is_none());
 }
+
