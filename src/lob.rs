@@ -51,7 +51,7 @@ pub struct Book {
 
 impl Book {
     pub fn bbo(&self) -> (Option<LevelSummary>, Option<LevelSummary>) {
-        let bid = self.bids.iter().rev().next().map(|(px, l)| {
+        let bid = self.bids.iter().next_back().map(|(px, l)| {
             let (sz, ct) = agg(l);
             LevelSummary { price: *px, size: sz, count: ct }
         });

@@ -14,11 +14,12 @@ use std::{
     io::{self, Write},
 };
 
+use serde_json::Value;
+
 use crossbeam_channel::{bounded, Receiver};
 use databento::{
     dbn::{
         decode::{AsyncDbnDecoder, DbnDecoder, DecodeRecord},
-        pretty::Px,
         record::MboMsg,
         Dataset, Schema, SymbolIndex
     },
@@ -175,8 +176,39 @@ async fn ensure_sample(path: &str) -> databento::Result<()> {
 
 /* ------------------------------------------------------------------ */
 
+/// Load symbology mapping from instrument_id to symbol name
+fn load_symbology(dir: &Path) -> HashMap<u32, String> {
+    let mut symbol_map = HashMap::new();
+    let symbology_path = dir.join("symbology.json");
+    
+    if let Ok(content) = fs::read_to_string(&symbology_path) {
+        if let Ok(json) = serde_json::from_str::<Value>(&content) {
+            if let Some(result) = json.get("result").and_then(|r| r.as_object()) {
+                for (symbol, entries) in result {
+                    if let Some(arr) = entries.as_array() {
+                        for entry in arr {
+                            if let Some(inst_id_str) = entry.get("s").and_then(|s| s.as_str()) {
+                                if let Ok(inst_id) = inst_id_str.parse::<u32>() {
+                                    symbol_map.insert(inst_id, symbol.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    symbol_map
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load .env file from parent directory
+    if let Err(e) = dotenvy::from_path("../.env") {
+        eprintln!("Warning: Could not load ../.env file: {}", e);
+    }
+    
     match parse_args() {
         /* ----------   VERIFY PATH  --------------------------------- */
         Mode::Verify => {
@@ -207,6 +239,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         /* ----------  SPEED PATH  ----------------------------------- */
         Mode::Speed(paths) => {
+            // Load symbology from the directory containing the files
+            let symbol_map = if let Some(parent) = paths.first().and_then(|p| p.parent()) {
+                load_symbology(parent)
+            } else {
+                HashMap::new()
+            };
+            
             let (tx, rx) = bounded::<Option<Vec<MboMsg>>>(8);
             spawn_producer(paths, tx);
 
@@ -214,22 +253,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (msgs, books) = consume(rx);
             let dt = t0.elapsed();
 
-            for (inst, b) in &books {
-                if b.bids.is_empty() && b.asks.is_empty() {
+            println!("\nFinal Book State:");
+            println!("{:-<60}", "");
+            
+            for (inst_id, book) in &books {
+                let (bid, ask) = book.bbo();
+                if bid.is_none() && ask.is_none() {
                     continue;
                 }
-                let bid = b
-                    .bids
-                    .iter()
-                    .rev()
-                    .next()
-                    .map(|(px, lvl)| (Px(*px), lvl.iter().map(|m| m.size).sum::<u32>()));
-                let ask = b
-                    .asks
-                    .iter()
-                    .next()
-                    .map(|(px, lvl)| (Px(*px), lvl.iter().map(|m| m.size).sum::<u32>()));
-                println!("{inst} | bid {bid:?}  ask {ask:?}");
+                
+                // Get symbol name from mapping or use instrument ID
+                let symbol = symbol_map.get(inst_id)
+                    .cloned()
+                    .unwrap_or_else(|| inst_id.to_string());
+                
+                println!("{} BBO:", symbol);
+                
+                // Format ask (top line)
+                if let Some(a) = ask {
+                    println!("    {:>4} @ {:>15.9} | {:>2} order(s)", 
+                        a.size, a.price as f64 / 1_000_000_000.0, a.count);
+                } else {
+                    println!("    None");
+                }
+                
+                // Format bid (bottom line)
+                if let Some(b) = bid {
+                    println!("    {:>4} @ {:>15.9} | {:>2} order(s)", 
+                        b.size, b.price as f64 / 1_000_000_000.0, b.count);
+                } else {
+                    println!("    None");
+                }
+                
+                println!();
             }
 
             println!(
