@@ -36,7 +36,7 @@ fn add_and_bbo() {
 fn modify_same_price_increase_size() {
     let mut book = Book::default();
     book.apply(msg(1, Side::Bid, Action::Add, 100, 5));
-    let mut m = msg(1, Side::Bid, Action::Modify, 100, 8);
+    let m = msg(1, Side::Bid, Action::Modify, 100, 8);
     book.apply(m);
 
     let (bid, ask) = book.bbo();
@@ -69,7 +69,6 @@ fn cancel_partial_and_full() {
 
 #[test]
 fn top_of_book_clears() {
-    use databento::dbn::enums::flags;
 
     let mut book = Book::default();
     book.apply(msg(1, Side::Bid, Action::Add, 100, 5));
@@ -144,7 +143,6 @@ fn modify_change_side() {
 
 #[test]
 fn top_of_book_ask_clears() {
-    use databento::dbn::enums::flags;
 
     let mut book = Book::default();
     book.apply(msg(1, Side::Ask, Action::Add, 110, 2));
