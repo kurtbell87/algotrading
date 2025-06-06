@@ -70,6 +70,20 @@ The system achieves:
 - >17 million messages per second throughput
 - Efficient memory usage through mmap and batch processing
 
+## Handling snapshot messages
+
+Databento sets a `SNAPSHOT` flag on records that originate from a replay or
+snapshot server. The flag constant is defined in `dbn::flags`:
+
+```rust
+pub const SNAPSHOT: u8 = 1 << 5;
+```
+as shown in the Databento source【F:docs/mbo_flags_snippet.txt†L1-L9】.
+Snapshot messages are applied the same way as live updates, typically starting
+with a `Clear` action followed by `Add` actions that rebuild the order book.
+The included unit test demonstrates clearing the book and applying orders from a
+snapshot.
+
 ## Architecture
 
 - **Producer thread**: Memory-maps files and decodes compressed market data

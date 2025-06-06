@@ -1,0 +1,7 @@
+   900	    /// Indicates it's the last message in the packet from the venue for a given
+   901	    /// `instrument_id`.
+   902	    pub const LAST: u8 = 1 << 7;
+   903	    /// Indicates a top-of-book message, not an individual order.
+   904	    pub const TOB: u8 = 1 << 6;
+   905	    /// Indicates the message was sourced from a replay, such as a snapshot server.
+   906	    pub const SNAPSHOT: u8 = 1 << 5;
