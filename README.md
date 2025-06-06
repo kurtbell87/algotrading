@@ -91,6 +91,19 @@ snapshot.
 - **Channel-based communication**: Lock-free message passing between threads
 - **Batch processing**: Messages processed in batches of 4096 for cache efficiency
 
+## Metrics
+
+The crate provides utilities for evaluating trading strategies. The
+`metrics` module includes helpers for computing cumulative PnL along with
+risk-adjusted statistics such as the Sharpe and Sortino ratios.
+
+```rust
+use algotrading::metrics::{total_pnl, sharpe_ratio};
+let returns = [0.1, -0.05, 0.2];
+let pnl = total_pnl(&returns);
+let sharpe = sharpe_ratio(&returns).unwrap();
+```
+
 ## License
 
 MIT
