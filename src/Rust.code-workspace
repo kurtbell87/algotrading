@@ -1,11 +1,8 @@
 {
-	"folders": [
-		{
-			"path": "../.."
-		},
-		{
-			"path": "../../../../Downloads/GLBX-20250125-7EGB4J87MC"
-		}
-	],
-	"settings": {}
+  "folders": [
+    {
+      "path": "../.."
+    }
+  ],
+  "settings": {}
 }
