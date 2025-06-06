@@ -1,8 +1,20 @@
-use algotrading::lob::{Market, Book};
-use algotrading::features::{DEFAULT_LEVELS};
-use databento::dbn::{record::{MboMsg, RecordHeader}, enums::{Action, Side}, FlagSet};
+use algotrading::features::DEFAULT_LEVELS;
+use algotrading::lob::{Book, Market};
+use databento::dbn::{
+    FlagSet,
+    enums::{Action, Side},
+    record::{MboMsg, RecordHeader},
+};
 
-fn msg(order_id: u64, side: Side, action: Action, px: i64, sz: u32, pub_id: u8, inst: u32) -> MboMsg {
+fn msg(
+    order_id: u64,
+    side: Side,
+    action: Action,
+    px: i64,
+    sz: u32,
+    pub_id: u8,
+    inst: u32,
+) -> MboMsg {
     let mut m = MboMsg {
         hd: RecordHeader::new::<MboMsg>(0, 0, inst, 0),
         order_id,
@@ -87,3 +99,20 @@ fn instruments_are_isolated() {
     assert!(f2.bid_sizes.is_empty());
 }
 
+#[test]
+fn snapshot_messages_update_book() {
+    let mut market = Market::default();
+
+    // snapshot orders seed the book at start of day
+    let mut snap = msg(1, Side::Bid, Action::Add, 100, 1, 1, 1);
+    snap.flags.set_snapshot();
+    market.apply(snap);
+
+    // first live message arrives
+    market.apply(msg(2, Side::Ask, Action::Add, 102, 1, 1, 1));
+
+    // features include depth from the snapshot
+    let feats = market.extract_features(1, DEFAULT_LEVELS).unwrap();
+    assert_eq!(feats.bid_sizes[0], 1);
+    assert_eq!(feats.ask_sizes[0], 1);
+}

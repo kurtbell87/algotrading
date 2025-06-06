@@ -10,3 +10,4 @@ pub mod backtest; // strategy backtesting utilities
 pub mod features; // feature extraction utilities
 pub mod lob; // order book logic
 pub mod metrics; // performance evaluation helpers
+pub mod strategy; // example trading strategies
