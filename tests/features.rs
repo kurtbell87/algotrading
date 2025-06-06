@@ -70,3 +70,20 @@ fn depth_sorted_by_price() {
     assert_eq!(depth[1].price, 100);
     assert_eq!(depth[2].price, 99);
 }
+#[test]
+fn instruments_are_isolated() {
+    let mut market = Market::default();
+    let bid = msg(1, Side::Bid, Action::Add, 100, 5, 1, 1);
+    market.apply(bid);
+    let ask_other = msg(2, Side::Ask, Action::Add, 200, 7, 1, 2);
+    market.apply(ask_other);
+
+    let f1 = market.extract_features(1, DEFAULT_LEVELS).unwrap();
+    assert_eq!(f1.bid_sizes, vec![5]);
+    assert!(f1.ask_sizes.is_empty());
+
+    let f2 = market.extract_features(2, DEFAULT_LEVELS).unwrap();
+    assert_eq!(f2.ask_sizes, vec![7]);
+    assert!(f2.bid_sizes.is_empty());
+}
+

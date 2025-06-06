@@ -8,3 +8,4 @@
 
 pub mod lob;          // order book logic
 pub mod features;    // feature extraction utilities
+pub mod backtest;   // strategy backtesting utilities
