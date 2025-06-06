@@ -6,6 +6,7 @@
 //! quotes.
 //! Additional helper modules may be added over time.
 
-pub mod lob;          // order book logic
-pub mod features;    // feature extraction utilities
-pub mod backtest;   // strategy backtesting utilities
+pub mod backtest; // strategy backtesting utilities
+pub mod features; // feature extraction utilities
+pub mod lob; // order book logic
+pub mod metrics; // performance evaluation helpers
