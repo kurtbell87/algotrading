@@ -36,6 +36,59 @@ A high-performance order book reconstruction and market data processing system w
    echo "DATABENTO_API_KEY=your_key_here" > ../.env
    ```
 
+## Rust Commands
+
+The following `cargo` commands cover building, running, testing, and generating
+documentation for the project.
+
+### Build
+
+Compile the project in debug or release mode:
+
+```bash
+cargo build       # debug build
+cargo build --release
+```
+
+### Run
+
+Process market data files:
+
+```bash
+cargo run --release <file|dir>
+```
+
+Verify functionality with the bundled GOOG/GOOGL sample:
+
+```bash
+cargo run --release -- --verify
+```
+
+### Test
+
+Execute the full test suite:
+
+```bash
+cargo test
+```
+
+### Lint and Format
+
+Ensure the code is properly formatted and passes Clippy lints:
+
+```bash
+cargo fmt
+cargo clippy --all-targets
+```
+
+### Documentation
+
+Build the API documentation and open it in your browser:
+
+```bash
+cargo doc --open
+```
+
 ## Usage
 
 ### Running with test data
