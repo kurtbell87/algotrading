@@ -159,6 +159,18 @@ let pnl = total_pnl(&returns);
 let sharpe = sharpe_ratio(&returns).unwrap();
 ```
 
+## Example Strategy
+
+An integration test demonstrates running the `HelloStrategy` on a small
+synthetic order flow and computing the resulting profit and loss (PnL). Run it
+and display the output with:
+
+```bash
+cargo test pnl_of_example -- --nocapture
+```
+
+The test prints the final PnL and asserts that it matches the expected value.
+
 ## License
 
 MIT

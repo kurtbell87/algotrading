@@ -117,5 +117,7 @@ fn pnl_of_example() {
     let final_mid = (b.price + a.price) as f64 / 2.0;
     let pnl = cash + position as f64 * final_mid;
 
+    println!("Final PnL: {}", pnl);
+
     assert!((pnl - 9.0).abs() < 1e-6);
 }
